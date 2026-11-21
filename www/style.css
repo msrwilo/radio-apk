@@ -1,0 +1,109 @@
+/* Fuentes alojadas aquí (sin Google Fonts): Lora y Lato, subconjunto latino. */
+@font-face{font-family:Lora;font-style:normal;font-weight:500;font-display:swap;src:url(vendor/fonts/lora-latin-500-normal.woff2) format("woff2")}
+@font-face{font-family:Lora;font-style:italic;font-weight:500;font-display:swap;src:url(vendor/fonts/lora-latin-500-italic.woff2) format("woff2")}
+@font-face{font-family:Lato;font-style:normal;font-weight:400;font-display:swap;src:url(vendor/fonts/lato-latin-400-normal.woff2) format("woff2")}
+@font-face{font-family:Lato;font-style:normal;font-weight:700;font-display:swap;src:url(vendor/fonts/lato-latin-700-normal.woff2) format("woff2")}
+:root{
+--bg:#0d0b0a;
+--ink:#e3d4bd;        /* Turrón */
+--ink-dim:rgba(227,212,189,.62);
+--accent:#a48161;     /* Barril */
+--sage:#69754a;       /* Serpiente */
+--glass:rgba(18,15,13,.62);
+--line:rgba(227,212,189,.18);
+--safe-b:env(safe-area-inset-bottom,0px);
+--safe-t:env(safe-area-inset-top,0px);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+overscroll-behavior:none;-webkit-tap-highlight-color:transparent;
+-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+body{font-family:Lato,system-ui,-apple-system,"Segoe UI",sans-serif}
+#stage{position:fixed;inset:0;width:100vw;height:100vh;height:100dvh;display:block;touch-action:none;outline:none}
+#veil{position:fixed;inset:0;background:var(--bg);opacity:1;pointer-events:none;transition:opacity .45s ease}
+#veil.off{opacity:0}
+/* Pantalla inicial */
+#intro{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+gap:18px;cursor:pointer;text-align:center;padding:24px;
+background:radial-gradient(ellipse at center,rgba(13,11,10,.15) 0%,rgba(13,11,10,.7) 70%);
+transition:opacity .6s ease}
+#intro.hide{opacity:0;pointer-events:none}
+#intro .sun{width:74px;height:74px;color:var(--accent);animation:breathe 3.2s ease-in-out infinite}
+#intro h1{font-family:Lora,Georgia,serif;font-weight:500;font-size:clamp(26px,6vw,40px);letter-spacing:.01em}
+#intro h1 em,.brand em{color:var(--accent)}
+#intro p{font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:var(--ink-dim);
+border:1px solid var(--line);border-radius:999px;padding:11px 22px}
+@keyframes breathe{0%,100%{transform:scale(1) rotate(0);opacity:.85}50%{transform:scale(1.08) rotate(22deg);opacity:1}}
+/* Capas de interfaz */
+.ui{position:fixed;left:50%;transform:translate(-50%,0);transition:opacity .3s ease,transform .3s ease;z-index:5}
+body:not(.menu) .ui{opacity:0;pointer-events:none}
+body:not(.menu) #bar{transform:translate(-50%,16px)}
+body:not(.menu) #top{transform:translate(-50%,-12px)}
+body:not(.menu):not(.intro){cursor:none}
+#top{top:calc(14px + var(--safe-t));width:min(100% - 28px,720px);display:flex;justify-content:space-between;
+align-items:center;gap:12px;pointer-events:none}
+.brand{font-family:Lora,Georgia,serif;font-size:17px;text-shadow:0 1px 12px rgba(0,0,0,.6)}
+#status{display:flex;align-items:center;gap:8px;font-size:11px;letter-spacing:.2em;text-transform:uppercase;
+color:var(--ink-dim);text-shadow:0 1px 10px rgba(0,0,0,.7);white-space:nowrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--ink-dim);display:inline-block}
+body[data-st="live"] .dot{background:#d9573a;box-shadow:0 0 0 0 rgba(217,87,58,.6);animation:pulse 1.6s infinite}
+body[data-st="connecting"] .dot,body[data-st="buffer"] .dot,body[data-st="retry"] .dot{background:var(--accent);animation:blink 1s infinite}
+@keyframes pulse{0%{box-shadow:0 0 0 0 rgba(217,87,58,.55)}70%{box-shadow:0 0 0 8px rgba(217,87,58,0)}100%{box-shadow:0 0 0 0 rgba(217,87,58,0)}}
+@keyframes blink{50%{opacity:.25}}
+#bar{bottom:calc(16px + var(--safe-b));display:flex;align-items:center;gap:4px;padding:6px;
+background:var(--glass);border:1px solid var(--line);border-radius:999px;
+-webkit-backdrop-filter:blur(14px) saturate(1.2);backdrop-filter:blur(14px) saturate(1.2);
+max-width:calc(100vw - 20px)}
+#bar button{appearance:none;border:0;background:transparent;color:var(--ink);height:46px;min-width:46px;
+border-radius:999px;display:grid;place-items:center;cursor:pointer;transition:background .2s}
+#bar button:hover,#bar button:focus-visible{background:rgba(227,212,189,.1);outline:none}
+#bar button:active{background:rgba(227,212,189,.18)}
+#bar svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+#bar svg .fill{fill:currentColor;stroke:none}
+#name{display:flex !important;gap:10px;align-items:center;padding:0 12px;min-width:150px !important;max-width:46vw}
+#vizIndex{font-size:11px;letter-spacing:.18em;color:var(--accent);font-weight:700}
+#vizName{font-family:Lora,Georgia,serif;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sep{width:1px;height:24px;background:var(--line);margin:0 4px}
+.i-pause,.i-exit{display:none}
+body.playing .i-play{display:none}
+body.playing .i-pause{display:block}
+body.fs .i-enter{display:none}
+body.fs .i-exit{display:block}
+body.nofs #fs{display:none}
+/* Selector de visualizadores */
+#sheet{position:fixed;left:50%;bottom:calc(84px + var(--safe-b));transform:translate(-50%,12px);
+width:min(100vw - 20px,560px);padding:10px;border-radius:22px;background:var(--glass);border:1px solid var(--line);
+-webkit-backdrop-filter:blur(16px);backdrop-filter:blur(16px);opacity:0;pointer-events:none;
+transition:opacity .25s ease,transform .25s ease;z-index:6}
+body.sheet #sheet{opacity:1;transform:translate(-50%,0);pointer-events:auto}
+#grid{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}
+@media (min-width:520px){#grid{grid-template-columns:repeat(3,1fr)}}
+#grid button{appearance:none;border:1px solid transparent;background:rgba(227,212,189,.05);color:var(--ink);
+border-radius:14px;padding:12px 12px;text-align:left;display:flex;gap:10px;align-items:baseline;cursor:pointer;font:inherit}
+#grid button b{font-size:10px;letter-spacing:.16em;color:var(--accent)}
+#grid button span{font-family:Lora,Georgia,serif;font-size:15px}
+#grid button.on{border-color:var(--accent);background:rgba(164,129,97,.16)}
+#toast{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);font-family:Lora,Georgia,serif;
+font-size:clamp(22px,5vw,34px);letter-spacing:.02em;color:var(--ink);text-shadow:0 2px 24px rgba(0,0,0,.8);
+opacity:0;pointer-events:none;transition:opacity .35s ease;z-index:4;text-align:center}
+#toast.show{opacity:1}
+#toast small{display:block;font-family:Lato,sans-serif;font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--ink-dim);margin-top:8px}
+.nojs{position:fixed;inset:0;display:grid;place-items:center}
+@media (max-width:380px){#name{min-width:112px !important}#vizName{font-size:14px}#bar button{min-width:42px}}
+@media (prefers-reduced-motion:reduce){#intro .sun{animation:none}}
+#sheet{max-height:calc(100vh - 110px - var(--safe-b));max-height:calc(100dvh - 110px - var(--safe-b));overflow:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+.opts{margin-top:10px;padding-top:12px;border-top:1px solid var(--line);display:grid;gap:10px}
+.opt{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.opt>span{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-dim)}
+.seg{display:flex;gap:2px;background:rgba(227,212,189,.06);border-radius:999px;padding:3px}
+.seg button{appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;font-size:13px;padding:7px 12px;border-radius:999px;cursor:pointer}
+.seg button.on{background:var(--accent);color:#1a1410;font-weight:700}
+body.auto #vizIndex::after{content:" ↻";letter-spacing:0;color:var(--ink-dim);font-weight:400}
+#vizIndex{white-space:nowrap}
+#bar button{position:relative}
+.badge{position:absolute;left:50%;bottom:4px;transform:translateX(-50%);font-size:8.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);line-height:1;pointer-events:none;white-space:nowrap}
+#timer svg,#quality svg{margin-top:-8px}
+body.auto #timer svg{color:var(--accent)}
+body.auto #vizIndex::after{content:none}
+.seg{flex-wrap:wrap}
+@media (max-width:470px){#vizName{display:none}#name{min-width:44px !important;padding:0 8px}#bar{gap:1px;padding:5px}#bar button{min-width:42px;height:46px}.sep{margin:0 2px}}

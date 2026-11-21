@@ -1,0 +1,6 @@
+{
+  "appId": "com.lafortalezaceramica.radio",
+  "appName": "La Fortaleza Radio",
+  "webDir": "www",
+  "android": { "allowMixedContent": false, "backgroundColor": "#0d0b0a" }
+}

@@ -1,0 +1,57 @@
+# Compila la APK de La Fortaleza Radio en los servidores de GitHub.
+# Se dispara solo al subir cambios, o a mano desde la pestaña Actions -> "Compilar APK" -> Run workflow.
+name: Compilar APK
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Instalar Capacitor y copiar la web a Android
+        run: |
+          npm ci
+          npx cap sync android
+
+      # Llave de firma fija (opcional). Con ella, cada APK nueva se instala encima de la anterior sin perder los datos de la app.
+      # Sin ella, GitHub genera una llave distinta en cada compilación y Android no deja actualizar: hay que desinstalar primero.
+      - name: Poner la llave de firma (si existe el secreto)
+        env:
+          LLAVE: ${{ secrets.DEBUG_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$LLAVE" ]; then
+            mkdir -p ~/.android
+            echo "$LLAVE" | base64 -d > ~/.android/debug.keystore
+            echo "Usando la llave guardada en el secreto."
+          else
+            echo "Sin secreto DEBUG_KEYSTORE_BASE64: se usa una llave nueva."
+          fi
+
+      - name: Compilar
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: La-Fortaleza-Radio-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
