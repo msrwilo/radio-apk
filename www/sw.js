@@ -1,10 +1,10 @@
 // Guarda la app para que abra sin internet. La radio y el remoto sí necesitan conexión.
 // Red primero: si hay internet siempre se ve la versión nueva; si no, la última guardada.
-const CACHE = 'radio-fortaleza-v1';
+const CACHE = 'radio-fortaleza-v2';
 const LISTA = [
-  './', 'index.html', 'style.css?v=5', 'reproductor.css?v=4', 'remoto.css?v=5', 'app.js?v=31', 'fuentes.js?v=3', 'ui-remoto.js?v=5', 'ui-pestanas.js?v=3',
+  './', 'index.html', 'style.css?v=5', 'reproductor.css?v=4', 'remoto.css?v=6', 'app.js?v=32', 'fuentes.js?v=3', 'ui-remoto.js?v=6', 'ui-pestanas.js?v=3',
   'id3.js?v=1', 'biblioteca.js?v=2', 'ui-reproductor.js?v=2', 'local.js?v=1', 'ui-comun.js?v=1', 'ui-ahora.js?v=1', 'maqueta.js?v=1',
-  'visualizers.js?v=8', 'visualizers2.js?v=14', 'vendor/three.module.min.js', 'manifest.webmanifest',
+  'visualizers.js?v=8', 'visualizers2.js?v=14', 'vendor/three.module.min.js', 'manifest.webmanifest', 'nativa.js', 'vendor/capacitor.js',
   'icon.svg', 'icon-192.png', 'icon-512.png',
   'vendor/fonts/lora-latin-500-normal.woff2', 'vendor/fonts/lora-latin-500-italic.woff2',
   'vendor/fonts/lato-latin-400-normal.woff2', 'vendor/fonts/lato-latin-700-normal.woff2'
