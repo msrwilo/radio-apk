@@ -127,3 +127,26 @@
 .rem-volver-caja{display:flex;justify-content:center;padding:6px 0}
 .rem-res .rem-volver-caja{justify-content:flex-start;padding:6px 6px 8px}
 @media (prefers-reduced-motion:reduce){.rem-tarj{transition:none}.rem-inicio .rem-cargando{animation:none}}
+
+/* Y5a (23 nov 2026): fichas Inicio | Listas y listas propias */
+.rem-fichas[hidden],.rem-listas[hidden]{display:none}
+.rem-fichas{display:flex;gap:2px;padding:3px;border-radius:999px;border:1px solid var(--line);background:var(--glass);align-self:flex-start;
+ -webkit-backdrop-filter:blur(14px);backdrop-filter:blur(14px)}
+.rem-fichas button{appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;font-size:14px;font-weight:700;height:40px;padding:0 22px;border-radius:999px;cursor:pointer;transition:background .2s}
+.rem-fichas button.on{background:var(--accent);color:#1a1410}
+.rem-cab-lista{padding-bottom:4px}
+.rem-lhead{display:flex;flex-direction:column;gap:2px;padding:4px 6px 10px}
+.rem-lhead b{font-family:Lora,Georgia,serif;font-weight:500;font-size:22px;line-height:1.25;overflow-wrap:anywhere}
+.rem-lhead span{font-size:14px;color:var(--ink-dim)}
+.rem-lbotones{display:flex;flex-wrap:wrap;gap:8px;padding:0 4px 10px}
+.rem-art-vacia{display:grid;place-items:center;color:var(--ink-dim)}
+.rem-art-vacia .ic{width:22px;height:22px}
+.rem-lrow{appearance:none;border:0;background:transparent;font:inherit}
+.rem-lrow .fila-ir .ic{width:18px;height:18px}
+.rem-fila-datos{display:flex;align-items:flex-start;gap:6px}
+.rem-fila-datos .rem-datos{flex:1;min-width:0}
+.rem-fila-datos .ic-btn{flex:none;margin-top:-4px}
+.rem-colab .rem-cab-acc{flex-wrap:wrap;justify-content:flex-end}
+.rem-listas .rem-cargando{animation:rem-late 1.1s ease-in-out infinite}
+.rem-lcan{cursor:pointer}
+@media (prefers-reduced-motion:reduce){.rem-fichas button{transition:none}.rem-listas .rem-cargando{animation:none}}
