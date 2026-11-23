@@ -101,3 +101,29 @@
  letter-spacing:.06em;color:#e8c9a5;vertical-align:1px}
 /* Horizontal bajo (coche, 1024 × 600): miniatura más chica para que «A continuación» se vea sin desplazar. */
 @media (orientation:landscape) and (max-height:600px){.rem-mini{max-width:min(100%,260px)}.rem-datos b{font-size:18px}}
+
+/* Y4: Inicio de YouTube / YouTube Music */
+.rem-inicio[hidden]{display:none}
+.rem-cab-acc{display:flex;align-items:center;gap:6px;min-width:0}
+.rem-fuentes{display:flex;gap:2px;padding:2px;border-radius:999px;border:1px solid var(--line);background:rgba(0,0,0,.18)}
+.rem-fuentes button{appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;font-size:12px;font-weight:700;height:34px;padding:0 12px;border-radius:999px;white-space:nowrap;cursor:pointer}
+.rem-fuentes button.on{background:var(--accent);color:#1a1410}
+.rem-sec+.rem-sec{margin-top:14px}
+.rem-sec h3{margin:0 0 8px 4px;font-family:Lora,Georgia,serif;font-weight:500;font-size:16px;color:var(--ink)}
+.rem-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 10px}
+@media (min-width:560px){.rem-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media (min-width:900px),(orientation:landscape) and (max-height:600px){.rem-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (min-width:1200px){.rem-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.rem-tarj{appearance:none;border:0;background:transparent;color:var(--ink);font:inherit;text-align:left;padding:0;display:flex;flex-direction:column;gap:7px;min-width:0;cursor:pointer;transition:transform .15s}
+.rem-tarj:active{transform:scale(.97)}
+.rem-tarj-mini{position:relative;display:block;width:100%;aspect-ratio:16/9;border-radius:12px;overflow:hidden;background:#1b1612;box-shadow:0 2px 8px rgba(0,0,0,.5)}
+.rem-tarj-mini img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+.rem-tarj-mini small{position:absolute;right:6px;bottom:6px;padding:2px 6px;border-radius:6px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;font-variant-numeric:tabular-nums}
+.rem-tarj-vivo{color:#ff9d86 !important;text-transform:uppercase;letter-spacing:.08em}
+.rem-tarj-txt{display:flex;flex-direction:column;gap:2px;min-width:0;padding:0 2px}
+.rem-tarj-txt b{font-size:14px;font-weight:700;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.rem-tarj-txt small{font-size:12px;color:var(--ink-dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rem-inicio .rem-cargando{animation:rem-late 1.1s ease-in-out infinite}
+.rem-volver-caja{display:flex;justify-content:center;padding:6px 0}
+.rem-res .rem-volver-caja{justify-content:flex-start;padding:6px 6px 8px}
+@media (prefers-reduced-motion:reduce){.rem-tarj{transition:none}.rem-inicio .rem-cargando{animation:none}}

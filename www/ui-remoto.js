@@ -1,10 +1,12 @@
 // Pestaña Remoto: controla la música de Prometeo (agente en radio-agente) desde cualquier dispositivo.
 // Rutas y estado: WIKI/sistemas/radio-backend.md §4. Pantallas: radio-flujo.md §5 y radio-brief-diseno.md §5.
 // Y3 (23 nov 2026): tres bloques: Sonando, A continuación (cola pendiente + lo que pondría YouTube) y Recomendados.
+// Y4 (23 nov 2026): bloque Inicio (recomendaciones de YouTube o YouTube Music en cuadrícula) mientras no haya una búsqueda en pantalla.
 import { esc, tiempo, ic, elegirOpcion, confirmar, ordenable } from './ui-comun.js?v=1';
 
 const URL_BASE = 'https://control-radio.lafortalezaceramica.com';
-const K_FICHA = 'radio.remoto.ficha', K_URL = 'radio.remoto.url';
+const K_FICHA = 'radio.remoto.ficha', K_URL = 'radio.remoto.url', K_FUENTE = 'radio.remoto.inicio';
+const INICIO_VIDA = 10 * 60 * 1000;   // pasado este tiempo, al entrar a Remoto el inicio se vuelve a pedir
 const CANDADO = '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>';
 const nombreDispositivo = () => {
   const ua = navigator.userAgent;
@@ -22,6 +24,9 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   let es = null, reintento = 0;
   let resultados = null, buscando = false, ultimaBusqueda = '';
   let arrastrando = false;
+  // Y4: inicio. `estadoIni`: 'vacio' (sin pedir) | 'cargando' | 'listo' | 'error' | 'sinvideos'.
+  let inicio = { estadoIni: 'vacio', fuente: null, secciones: [], t: 0 };
+  let pidiendoInicio = 0;
   let visible = false, sucio = true, pantalla = '';
   let ultimoEvento = 0;    // cuándo llegó lo último del agente (estado o latido)
   const oyentes = new Set();
@@ -112,6 +117,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   }, 10000);
   function salir(avisarUsuario = true) {
     cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null; recs = { id: null, lista: [] };
+    inicio = { estadoIni: 'vacio', fuente: null, secciones: [], t: 0 }; pidiendoInicio++;
     if (avisarUsuario) toast('Remoto', 'Este dispositivo salió del control remoto');
     pintar(); avisar();
   }
@@ -190,6 +196,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
         <form class="rem-buscar"><label class="campo">${ic('buscar')}<input type="search" name="q" placeholder="Buscar en YouTube" enterkeyhint="search" autocomplete="off" aria-label="Buscar en YouTube"></label><button type="submit" class="boton principal chico">Buscar</button></form>
         <div class="rem-res"></div>
         <div class="rem-bloque rem-recs" hidden></div>
+        <div class="rem-bloque rem-inicio" hidden></div>
       </div></div>`;
     const q = seccion.querySelector('input[name=q]');
     q.value = ultimaBusqueda;
@@ -203,7 +210,9 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     seccion.querySelector('.rem-res').addEventListener('click', clicResultado);
     seccion.querySelector('.rem-colab').addEventListener('click', clicCola);
     seccion.querySelector('.rem-recs').addEventListener('click', clicRecomendado);
+    seccion.querySelector('.rem-inicio').addEventListener('click', clicInicio);
     pintarResultados();
+    pintarInicio();
   }
 
   function pintarSonando() {
@@ -324,27 +333,101 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (r) ofrecer(r);
   }
 
+  // ---------- Y4: Inicio ----------
+  const fuenteInicio = () => (store.get(K_FUENTE) === 'music' ? 'music' : 'youtube');
+  const NOMBRE_FUENTE = { youtube: 'YouTube', music: 'YouTube Music' };
+  // Se pide al agente (GET /inicio). Una petición a la vez; si se cambia de fuente a medias, la vieja se descarta.
+  async function pedirInicio(forzar = false) {
+    if (!ficha() || !est || !est.conectado) return;
+    const fuente = fuenteInicio();
+    if (!forzar && inicio.fuente === fuente && inicio.estadoIni === 'listo' && Date.now() - inicio.t < INICIO_VIDA) return;
+    if (!forzar && inicio.fuente === fuente && inicio.estadoIni === 'cargando') return;
+    // Tras un fallo o una lectura vacía no se insiste cada segundo: pasados 30 s, o con el botón.
+    if (!forzar && inicio.fuente === fuente && (inicio.estadoIni === 'error' || inicio.estadoIni === 'sinvideos') && Date.now() - inicio.t < 30000) return;
+    const mio = ++pidiendoInicio;
+    inicio = { ...inicio, fuente, estadoIni: 'cargando', secciones: inicio.fuente === fuente ? inicio.secciones : [] };
+    pintarInicio();
+    let r = null, fallo = false;
+    try { r = await api('GET', `/inicio?proveedor=youtube&fuente=${fuente}${forzar ? '&refrescar=1' : ''}`, null, 60000); }
+    catch (e) { fallo = true; }
+    if (mio !== pidiendoInicio) return;   // llegó tarde: se pidió otra cosa
+    const secs = !fallo && r && Array.isArray(r.secciones) ? r.secciones.filter(s => s && Array.isArray(s.items) && s.items.length) : [];
+    inicio = { estadoIni: fallo ? 'error' : secs.length ? 'listo' : 'sinvideos', fuente, secciones: secs, t: Date.now() };
+    pintarInicio();
+  }
+  function tarjeta(r, k) {
+    return `<button type="button" class="rem-tarj" data-k="${k}">
+      <span class="rem-tarj-mini"><img src="${esc(miniDe(r))}" alt="" loading="lazy" decoding="async">${r.duracion ? `<small>${tiempo(r.duracion)}</small>` : '<small class="rem-tarj-vivo">En vivo</small>'}</span>
+      <span class="rem-tarj-txt"><b>${esc(r.titulo)}</b><small>${esc(r.autor || '')}</small></span></button>`;
+  }
+  function pintarInicio() {
+    const c = seccion.querySelector('.rem-inicio');
+    if (!c) return;
+    // Con una búsqueda en pantalla (o buscando) el inicio no se ve.
+    const oculto = !ficha() || buscando || resultados != null;
+    c.hidden = oculto;
+    if (oculto) return;
+    const f = fuenteInicio();
+    // pintar() corre cada segundo mientras suena algo: el bloque solo se redibuja si cambió.
+    const llave = JSON.stringify([f, inicio.estadoIni, inicio.fuente, inicio.t, !!(est && est.conectado)]);
+    if (c.dataset.k === llave) return;
+    c.dataset.k = llave;
+    const cab = `<header class="rem-cab"><b>Inicio</b><span class="rem-cab-acc">
+      <span class="rem-fuentes" role="group" aria-label="Origen del inicio">${['youtube', 'music'].map(k => `<button type="button" data-f="${k}" aria-pressed="${f === k}" class="${f === k ? 'on' : ''}">${NOMBRE_FUENTE[k]}</button>`).join('')}</span>
+      <button type="button" class="ic-btn" data-a="actualizar" aria-label="Actualizar el inicio">${ic('actualizar')}</button></span></header>`;
+    let cuerpo;
+    if (!est || !est.conectado) cuerpo = '<p class="rem-nota rem-nota-izq">El inicio aparece cuando Prometeo esté conectado.</p>';
+    else if (inicio.estadoIni === 'cargando' && !inicio.secciones.length) cuerpo = `<p class="rem-nota rem-nota-izq rem-cargando">Cargando el inicio de ${NOMBRE_FUENTE[f]}…</p>`;
+    else if (inicio.estadoIni === 'error' || inicio.estadoIni === 'sinvideos') {
+      cuerpo = `<p class="rem-nota rem-nota-izq">${inicio.estadoIni === 'error' ? 'YouTube no respondió.' : `${NOMBRE_FUENTE[f]} no mostró su inicio.`}</p><div class="rem-volver-caja"><button type="button" class="boton chico" data-a="actualizar">Intentar otra vez</button></div>`;
+    } else if (inicio.estadoIni === 'vacio') cuerpo = '';
+    else {
+      let k = 0;
+      cuerpo = inicio.secciones.map(s => `<section class="rem-sec"><h3>${esc(s.titulo || '')}</h3><div class="rem-grid">${s.items.map(it => tarjeta(it, k++)).join('')}</div></section>`).join('');
+    }
+    c.innerHTML = cab + cuerpo;
+    c.classList.toggle('rem-actualizando', inicio.estadoIni === 'cargando' && inicio.secciones.length > 0);
+  }
+  function clicInicio(e) {
+    const fu = e.target.closest('[data-f]');
+    if (fu) { if (fu.dataset.f !== fuenteInicio()) { store.set(K_FUENTE, fu.dataset.f); inicio = { estadoIni: 'vacio', fuente: null, secciones: [], t: 0 }; pintarInicio(); pedirInicio(true); } return; }
+    if (e.target.closest('[data-a=actualizar]')) { pedirInicio(true); return; }
+    const t = e.target.closest('.rem-tarj');
+    if (!t) return;
+    const todos = inicio.secciones.flatMap(s => s.items);
+    const r = todos[+t.dataset.k];
+    if (r) ofrecer(r);
+  }
+
   async function buscar(texto) {
     const q = String(texto || '').trim();
+    if (!q && !buscando) { volverAlInicio(); return; }   // búsqueda vacía: de vuelta al inicio
     if (!q || buscando) return;
-    ultimaBusqueda = q; buscando = true; resultados = null; pintarResultados();
+    ultimaBusqueda = q; buscando = true; resultados = null; pintarResultados(); pintarInicio();
     try {
       const r = await api('GET', `/buscar?proveedor=youtube&q=${encodeURIComponent(q)}`, null, 30000);
       resultados = r.resultados || [];
     } catch (e) {
       resultados = [];
       toast('YouTube no respondió', e && e.codigo === 0 ? 'Prometeo no responde' : 'Intenta otra vez');
-    } finally { buscando = false; pintarResultados(); }
+    } finally { buscando = false; pintarResultados(); pintarInicio(); }
+  }
+  function volverAlInicio() {
+    ultimaBusqueda = ''; resultados = null;
+    const q = seccion.querySelector('input[name=q]'); if (q) q.value = '';
+    pintarResultados(); pintarInicio(); pedirInicio();
   }
   function pintarResultados() {
     const c = seccion.querySelector('.rem-res');
     if (!c) return;
     if (buscando) { c.innerHTML = '<p class="rem-nota">Buscando…</p>'; return; }
     if (resultados == null) { c.innerHTML = ''; return; }
-    if (!resultados.length) { c.innerHTML = '<p class="rem-nota">No hay resultados.</p>'; return; }
-    c.innerHTML = resultados.map((r, i) => filaItem(r, `data-i="${i}"`)).join('');
+    const volver = '<button type="button" class="boton chico rem-volver" data-a="inicio">Volver al inicio</button>';
+    if (!resultados.length) { c.innerHTML = `<p class="rem-nota">No hay resultados.</p><div class="rem-volver-caja">${volver}</div>`; return; }
+    c.innerHTML = `<div class="rem-volver-caja">${volver}</div>` + resultados.map((r, i) => filaItem(r, `data-i="${i}"`)).join('');
   }
   function clicResultado(e) {
+    if (e.target.closest('[data-a=inicio]')) { volverAlInicio(); return; }
     const b = e.target.closest('.rem-r'); if (!b || !resultados) return;
     const r = resultados[+b.dataset.i];
     if (r) ofrecer(r);
@@ -395,6 +478,8 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     const kr = est && est.actual ? est.actual.id + '|' + recsVigentes().map(x => x.id).join(',') : '';
     const cr = seccion.querySelector('.rem-recs');
     if (cr && cr.dataset.k !== kr) { cr.dataset.k = kr; pintarRecs(); }
+    pintarInicio();
+    if (visible) pedirInicio();
   }
 
   // ---------- lo que la app usa ----------
