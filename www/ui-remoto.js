@@ -1,5 +1,6 @@
 // Pestaña Remoto: controla la música de Prometeo (agente en radio-agente) desde cualquier dispositivo.
 // Rutas y estado: WIKI/sistemas/radio-backend.md §4. Pantallas: radio-flujo.md §5 y radio-brief-diseno.md §5.
+// Y3 (23 nov 2026): tres bloques: Sonando, A continuación (cola pendiente + lo que pondría YouTube) y Recomendados.
 import { esc, tiempo, ic, elegirOpcion, confirmar, ordenable } from './ui-comun.js?v=1';
 
 const URL_BASE = 'https://control-radio.lafortalezaceramica.com';
@@ -14,6 +15,9 @@ const miniDe = (it, calidad = 'mqdefault') => (it && (it.miniatura || (it.id ? `
 
 export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = () => false }) {
   let est = null;          // último estado recibido del agente
+  // Recomendados del lateral de YouTube y el video al que pertenecen. El evento «estado» no los trae (agente 0.1.7):
+  // llegan en el evento «siguientes», en GET /estado y en las respuestas de las órdenes. Solo valen para ese video.
+  let recs = { id: null, lista: [] };
   let red = 'conectando';  // 'ok' | 'conectando' | 'caido'
   let es = null, reintento = 0;
   let resultados = null, buscando = false, ultimaBusqueda = '';
@@ -61,6 +65,12 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     });
     // Latido del agente (0.1.6 en adelante): sirve para saber que el flujo sigue vivo aunque nada cambie.
     es.addEventListener('latido', () => { ultimoEvento = Date.now(); });
+    es.addEventListener('siguientes', ev => {
+      let d; try { d = JSON.parse(ev.data); } catch { return; }
+      recs = { id: d.id || null, lista: Array.isArray(d.recomendados) ? d.recomendados : [] };
+      ultimoEvento = Date.now();
+      if (visible) pintar(); else sucio = true;
+    });
     es.onerror = () => {
       red = 'caido'; pintarEstado(); avisar();
       // Si el navegador desistió (ficha mala, agente caído), se revisa y se reintenta.
@@ -70,7 +80,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   async function revisar() {
     if (!ficha()) return;
     try {
-      est = await api('GET', '/estado', null, 8000); red = 'ok'; ultimoEvento = Date.now();
+      est = await api('GET', '/estado', null, 8000); tomarRecs(est); red = 'ok'; ultimoEvento = Date.now();
       conectar();   // reabre el flujo; conectar() deja 'conectando' hasta que llegue el primer estado
       red = 'ok';   // el estado recién pedido es fresco: no hace falta esperar al flujo para mostrarlo
       pintarEstado();
@@ -101,18 +111,22 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (Date.now() - ultimoEvento > 45000) revalidar();
   }, 10000);
   function salir(avisarUsuario = true) {
-    cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null;
+    cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null; recs = { id: null, lista: [] };
     if (avisarUsuario) toast('Remoto', 'Este dispositivo salió del control remoto');
     pintar(); avisar();
   }
 
   // ---------- órdenes ----------
   async function orden(metodo, ruta, cuerpo, ms) {
-    try { const r = await api(metodo, ruta, cuerpo, ms); if (r && r.cola) { est = r; red = 'ok'; if (visible) pintar(); avisar(); } return r; }
+    try { const r = await api(metodo, ruta, cuerpo, ms); if (r && r.cola) { est = r; tomarRecs(r); red = 'ok'; if (visible) pintar(); avisar(); } return r; }
     catch (e) { toast('Remoto', mensaje(e)); return null; }
   }
   const control = (accion, segundo) => orden('POST', '/control', { accion, segundo });
   const hayActual = () => !!(est && est.actual);
+  function tomarRecs(r) { if (r && Array.isArray(r.recomendados)) recs = { id: (r.actual && r.actual.id) || null, lista: r.recomendados }; }
+  // Lo que falta por sonar de la cola propia: lo ya reproducido y lo que suena no se muestran.
+  const pendientes = () => (est && est.cola ? est.cola.slice((est.indice || 0) + 1) : []);
+  const recsVigentes = () => (est && est.actual && recs.id === est.actual.id ? recs.lista : []);
 
   // ---------- pantallas ----------
   const dot = { ok: 'ok', conectando: 'cargando', caido: 'caido' };
@@ -167,7 +181,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
         <div class="rem-top"><span class="rem-estado" data-k="cargando"><i class="dot"></i><b>Conectando…</b></span>
           <button type="button" class="boton chico rem-reintentar" hidden>Reintentar</button>
           <button type="button" class="ic-btn rem-mas" aria-label="Más opciones">${ic('mas')}</button></div>
-        <div class="rem-prov" role="group" aria-label="Fuente"><button type="button" class="on" aria-pressed="true">YouTube</button><button type="button" disabled>SoundCloud<small>Pronto</small></button><button type="button" disabled>Radio Garden<small>Pronto</small></button></div>
+        <div class="rem-prov" role="group" aria-label="Fuente"><button type="button" class="on" aria-pressed="true">YouTube</button><button type="button" disabled>Radio Garden<small>Pronto</small></button><button type="button" disabled>SoundCloud<small>Pronto</small></button></div>
         <button type="button" class="rem-aviso" hidden>${ic('radio')}<span>Estás oyendo tu música. Toca para oír la radio</span></button>
         <div class="rem-bloque rem-sonando"></div>
         <div class="rem-bloque rem-colab"></div>
@@ -175,6 +189,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       <div class="rem-col rem-der">
         <form class="rem-buscar"><label class="campo">${ic('buscar')}<input type="search" name="q" placeholder="Buscar en YouTube" enterkeyhint="search" autocomplete="off" aria-label="Buscar en YouTube"></label><button type="submit" class="boton principal chico">Buscar</button></form>
         <div class="rem-res"></div>
+        <div class="rem-bloque rem-recs" hidden></div>
       </div></div>`;
     const q = seccion.querySelector('input[name=q]');
     q.value = ultimaBusqueda;
@@ -187,6 +202,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     seccion.querySelector('.rem-sonando').addEventListener('click', clicSonando);
     seccion.querySelector('.rem-res').addEventListener('click', clicResultado);
     seccion.querySelector('.rem-colab').addEventListener('click', clicCola);
+    seccion.querySelector('.rem-recs').addEventListener('click', clicRecomendado);
     pintarResultados();
   }
 
@@ -240,34 +256,72 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     else if (a === 'sig') control('siguiente');
   }
 
+  // Bloque «A continuación»: la cola pendiente y, si no hay, lo que YouTube pondría después (marcado «Automático»).
+  // Con cola pendiente no se muestra la continuación de YouTube: es la del video actual y cambiaría al acabarse la cola.
   function pintarCola() {
     const c = seccion.querySelector('.rem-colab');
     if (!c) return;
-    const cola = (est && est.cola) || [];
-    c.innerHTML = `<header class="rem-cab"><b>Cola de Prometeo</b>${cola.length ? '<button type="button" class="boton chico" data-a="vaciar">Vaciar</button>' : ''}</header>` +
-      (cola.length ? `<div class="rem-lista">${cola.map((it, i) => filaCola(it, i)).join('')}</div>` : '<p class="rem-nota">La cola está vacía.</p>');
+    const pend = pendientes();
+    const cont = est && est.actual ? est.continuacion : null;
+    let pie = '';
+    if (pend.length) pie = '<p class="rem-nota rem-nota-izq">Al acabar la cola, sigue lo que elija YouTube.</p>';
+    else if (cont) pie = `<p class="rem-sub">Después, YouTube pone</p>${filaItem(cont, 'data-c', true)}`;
+    else if (est && est.actual) pie = '<p class="rem-nota rem-nota-izq">YouTube todavía no dice qué sigue.</p>';
+    else pie = '<p class="rem-nota rem-nota-izq">No hay nada en la fila.</p>';
+    c.innerHTML = `<header class="rem-cab"><b>A continuación</b>${pend.length ? '<button type="button" class="boton chico" data-a="vaciar">Quitar todo</button>' : ''}</header>` +
+      (pend.length ? `<div class="rem-lista">${pend.map(filaCola).join('')}</div>` : '') + pie;
     const lista = c.querySelector('.rem-lista');
+    // Posiciones de la lista pendiente → posiciones en la cola completa del agente (después de lo que suena).
     if (lista) ordenable(lista, {
-      alMover: (d, h) => orden('POST', '/cola/mover', { uid: est.cola[d].uid, a: h }),
-      alQuitar: i => orden('POST', '/cola/quitar', { uid: est.cola[i].uid })
+      alMover: (d, h) => { const p = pendientes(); if (p[d]) orden('POST', '/cola/mover', { uid: p[d].uid, a: (est.indice || 0) + 1 + h }); },
+      alQuitar: i => { const p = pendientes(); if (p[i]) orden('POST', '/cola/quitar', { uid: p[i].uid }); }
     });
   }
-  function filaCola(it, i) {
-    const suena = est && i === est.indice;
-    return `<div class="fila fila-cola${suena ? ' suena' : ''}" data-uid="${esc(it.uid)}">
+  const etiquetaAuto = '<em class="rem-auto">Automático</em>';
+  function filaCola(it) {
+    return `<div class="fila fila-cola" data-uid="${esc(it.uid)}">
       <button type="button" class="fila-asa" data-asa aria-label="Arrastrar para mover">${ic('asa')}</button>
       <span class="rem-art"><img src="${esc(miniDe(it))}" alt="" loading="lazy" decoding="async"></span>
-      <span class="fila-txt"><b>${esc(it.titulo)}</b><small>${esc([it.autor, it.duracion ? tiempo(it.duracion) : 'En vivo'].filter(Boolean).join(' · '))}</small></span>
+      <span class="fila-txt"><b>${esc(it.titulo)}</b><small>${it.automatico ? etiquetaAuto : ''}${esc([it.autor, it.duracion ? tiempo(it.duracion) : 'En vivo'].filter(Boolean).join(' · '))}</small></span>
       <button type="button" class="fila-mas" data-quitar aria-label="Quitar de la cola">${ic('cerrar')}</button></div>`;
+  }
+  // Renglón de un video que todavía no está en la cola (resultado, recomendado o continuación de YouTube).
+  function filaItem(r, attr, auto = false) {
+    return `<button type="button" class="fila rem-r" ${attr}>
+      <span class="rem-art rem-art-g"><img src="${esc(miniDe(r))}" alt="" loading="lazy" decoding="async"></span>
+      <span class="fila-txt"><b>${esc(r.titulo)}</b><small>${auto ? etiquetaAuto : ''}${esc(r.autor || '')}</small></span>
+      <span class="fila-t">${r.duracion ? tiempo(r.duracion) : '<em class="rem-vivo-ch">En vivo</em>'}</span></button>`;
   }
   async function clicCola(e) {
     const v = e.target.closest('[data-a=vaciar]');
     if (v) {
-      if (await confirmar({ titulo: '¿Vaciar la cola?', texto: 'Se detiene lo que suena en Prometeo.', boton: 'Vaciar', peligro: true })) orden('POST', '/cola/vaciar');
+      const uids = pendientes().map(x => x.uid);
+      if (!uids.length) return;
+      if (!await confirmar({ titulo: '¿Quitar lo que sigue?', texto: 'Lo que suena no se detiene.', boton: 'Quitar todo', peligro: true })) return;
+      // El agente no tiene una orden para esto (/cola/vaciar también detiene lo que suena): se quita uno por uno.
+      for (const uid of uids) { if (!await orden('POST', '/cola/quitar', { uid })) break; }
       return;
     }
+    if (e.target.closest('[data-c]')) { if (est && est.continuacion) ofrecer(est.continuacion); return; }
     const q = e.target.closest('[data-quitar]');
     if (q) orden('POST', '/cola/quitar', { uid: q.closest('.fila').dataset.uid });
+  }
+
+  // Bloque «Recomendados»: los del lateral de YouTube del video que suena.
+  function pintarRecs() {
+    const c = seccion.querySelector('.rem-recs');
+    if (!c) return;
+    c.hidden = !(est && est.actual);
+    if (c.hidden) { c.innerHTML = ''; return; }
+    const l = recsVigentes();
+    c.innerHTML = '<header class="rem-cab"><b>Recomendados</b></header>' +
+      (l.length ? `<div class="rem-lista">${l.map((r, i) => filaItem(r, `data-i="${i}"`)).join('')}</div>`
+        : '<p class="rem-nota rem-nota-izq">YouTube todavía no muestra recomendados para este video.</p>');
+  }
+  function clicRecomendado(e) {
+    const b = e.target.closest('.rem-r'); if (!b) return;
+    const r = recsVigentes()[+b.dataset.i];
+    if (r) ofrecer(r);
   }
 
   async function buscar(texto) {
@@ -288,14 +342,16 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (buscando) { c.innerHTML = '<p class="rem-nota">Buscando…</p>'; return; }
     if (resultados == null) { c.innerHTML = ''; return; }
     if (!resultados.length) { c.innerHTML = '<p class="rem-nota">No hay resultados.</p>'; return; }
-    c.innerHTML = resultados.map((r, i) => `<button type="button" class="fila rem-r" data-i="${i}">
-      <span class="rem-art rem-art-g"><img src="${esc(miniDe(r))}" alt="" loading="lazy" decoding="async"></span>
-      <span class="fila-txt"><b>${esc(r.titulo)}</b><small>${esc(r.autor || '')}</small></span>
-      <span class="fila-t">${r.duracion ? tiempo(r.duracion) : '<em class="rem-vivo-ch">En vivo</em>'}</span></button>`).join('');
+    c.innerHTML = resultados.map((r, i) => filaItem(r, `data-i="${i}"`)).join('');
   }
-  async function clicResultado(e) {
+  function clicResultado(e) {
     const b = e.target.closest('.rem-r'); if (!b || !resultados) return;
     const r = resultados[+b.dataset.i];
+    if (r) ofrecer(r);
+  }
+  // Hoja de opciones para un video que no está en la cola. Se manda sin `automatico` ni `uid`: lo puso el usuario.
+  async function ofrecer(x) {
+    const r = { proveedor: x.proveedor || 'youtube', id: x.id, titulo: x.titulo, autor: x.autor, duracion: x.duracion, miniatura: x.miniatura };
     const op = await elegirOpcion({
       titulo: r.titulo,
       opciones: [
@@ -331,10 +387,14 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (!ficha()) { if (pantalla !== 'clave') pantallaClave(); return; }
     if (pantalla !== 'principal') pantallaPrincipal();
     pintarEstado(); pintarAviso(); pintarSonando();
-    // La cola se redibuja solo si cambió; no mientras se arrastra una fila.
-    const k = est ? JSON.stringify([est.cola.map(x => x.uid), est.indice]) : '';
+    // Cada bloque se redibuja solo si cambió; la cola, no mientras se arrastra una fila.
+    const cont = est && est.actual && est.continuacion;
+    const k = est ? JSON.stringify([pendientes().map(x => x.uid), !!est.actual, cont ? cont.id : '']) : '';
     const c = seccion.querySelector('.rem-colab');
     if (c && c.dataset.k !== k && !c.querySelector('.fila.arrastrando')) { c.dataset.k = k; pintarCola(); }
+    const kr = est && est.actual ? est.actual.id + '|' + recsVigentes().map(x => x.id).join(',') : '';
+    const cr = seccion.querySelector('.rem-recs');
+    if (cr && cr.dataset.k !== kr) { cr.dataset.k = kr; pintarRecs(); }
   }
 
   // ---------- lo que la app usa ----------

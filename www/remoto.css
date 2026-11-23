@@ -88,5 +88,16 @@
 .rem-art img[hidden],.rem-mini img[hidden]{display:none}
 .rem-mini{max-width:min(100%,560px);align-self:center}
 /* Sin conexión confirmada con Prometeo, lo que se ve puede estar viejo: se atenúa hasta que llegue el estado nuevo. */
-.rem-rancio .rem-sonando,.rem-rancio .rem-colab{opacity:.5;transition:opacity .2s}
-@media (prefers-reduced-motion:reduce){.rem-rancio .rem-sonando,.rem-rancio .rem-colab{transition:none}}
+.rem-rancio .rem-sonando,.rem-rancio .rem-colab,.rem-rancio .rem-recs{opacity:.5;transition:opacity .2s}
+@media (prefers-reduced-motion:reduce){.rem-rancio .rem-sonando,.rem-rancio .rem-colab,.rem-rancio .rem-recs{transition:none}}
+/* Y3 (23 nov 2026): bloques «A continuación» y «Recomendados». */
+.rem-recs[hidden]{display:none}
+.rem-recs .rem-lista,.rem-colab .rem-lista{gap:2px}
+.rem-nota-izq{text-align:left;padding:4px 6px 2px}
+.rem-sub{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);padding:10px 6px 2px}
+.rem-colab .rem-lista+.rem-nota-izq{margin-top:4px}
+/* «Automático»: lo puso YouTube, no el usuario. Etiqueta en línea antes del canal, sin relleno de color (el play es lo único relleno). */
+.rem-auto{display:inline-block;margin-right:6px;padding:0 6px;border:1px solid rgba(164,129,97,.6);border-radius:6px;font-style:normal;font-size:11px;line-height:16px;
+ letter-spacing:.06em;color:#e8c9a5;vertical-align:1px}
+/* Horizontal bajo (coche, 1024 × 600): miniatura más chica para que «A continuación» se vea sin desplazar. */
+@media (orientation:landscape) and (max-height:600px){.rem-mini{max-width:min(100%,260px)}.rem-datos b{font-size:18px}}

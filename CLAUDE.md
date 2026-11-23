@@ -9,6 +9,7 @@ Etapa 5B del plan de la radio (vault: `WIKI/sistemas/radio-plan.md`). Reactivada
   - `local.js`: si el archivo trae `url`, se reproduce de ahí (sin leerlo entero).
   - `app.js`: sin service worker dentro de la APK.
   - `index.html`: carga `vendor/capacitor.js` y `nativa.js` antes de `app.js`.
+  - `ui-remoto.js` (Y3, 23 nov 2026, `app.js?v=29`): pantalla de YouTube en tres bloques (Sonando, A continuación, Recomendados); fuentes en orden YouTube, Radio Garden, SoundCloud. Pasar a la beta en Y6.
   - `vendor/three.module.min.js`: three.js r170 (mismo tamaño que el de producción, 691,648 bytes); en la copia local de `/radio` no estaba.
 - `android/`: proyecto nativo. Lo propio está en `app/src/main/java/com/lafortalezaceramica/radio/`:
   - `MusicaPlugin.java`: complemento «Musica» (elegirCarpeta, estado, listar, actualizar, detener; evento «accion»).
