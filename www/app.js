@@ -1,7 +1,7 @@
 import { buildVisualizers } from './visualizers.js?v=8';
 import { buildVisualizers2 } from './visualizers2.js?v=14';
 import { crearFuentes, crearSesionMedios } from './fuentes.js?v=3';
-import { crearRemotoUI } from './ui-remoto.js?v=5';
+import { crearRemotoUI } from './ui-remoto.js?v=6';
 import { crearPestanas } from './ui-pestanas.js?v=3';
 import { crearBiblioteca } from './biblioteca.js?v=2';
 import { crearLocal } from './local.js?v=1';

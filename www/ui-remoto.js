@@ -3,11 +3,15 @@
 // Y3 (23 nov 2026): tres bloques: Sonando, A continuación (cola pendiente + lo que pondría YouTube) y Recomendados.
 // Y4 (23 nov 2026): bloque Inicio (recomendaciones de YouTube o YouTube Music en cuadrícula) mientras no haya una búsqueda en pantalla.
 // Y5a (23 nov 2026): fichas Inicio | Listas; «Mis listas» (propias, guardadas en el agente de Prometeo), «Agregar a una lista…» y «Guardar como lista».
+// Y5b (23 nov 2026): grupo «De mi cuenta de YouTube» (agente 0.1.10): solo leer y reproducir; «Copiar a mis listas» y «Actualizar».
 import { esc, tiempo, ic, elegirOpcion, pedirTexto, confirmar, ordenable } from './ui-comun.js?v=1';
 
 const URL_BASE = 'https://control-radio.lafortalezaceramica.com';
 const K_FICHA = 'radio.remoto.ficha', K_URL = 'radio.remoto.url', K_VISTA = 'radio.remoto.vista';
 const INICIO_VIDA = 10 * 60 * 1000;   // pasado este tiempo, al entrar a Remoto el inicio se vuelve a pedir
+// Y5b: marca de las listas de la cuenta (rectángulo con el triángulo de reproducir, con el trazo de los demás íconos).
+const IC_YT = '<svg viewBox="0 0 24 24" class="ic ic-yt" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="4"/><path d="M10.2 9.3v5.4l4.6-2.7z"/></svg>';
+const CUENTA_VIDA = 10 * 60 * 1000;   // igual que la memoria del agente: pasado este tiempo, se vuelven a pedir al entrar
 const CANDADO = '<svg viewBox="0 0 24 24" class="ic" aria-hidden="true"><rect x="5" y="10.5" width="14" height="9.5" rx="2.5"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"/></svg>';
 const nombreDispositivo = () => {
   const ua = navigator.userAgent;
@@ -32,8 +36,12 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   // ('viejo' = el agente de Prometeo todavía no tiene listas, versión anterior a 0.1.9). `abierta`: la lista que se está viendo.
   let vista = store.get(K_VISTA) === 'listas' ? 'listas' : 'inicio';
   let listasP = { estado: 'vacio', propias: [], t: 0 };
-  let abierta = null;      // { id, estado: 'cargando' | 'listo', datos }
+  let abierta = null;      // { id, origen: 'propia' | 'cuenta', estado: 'cargando' | 'listo', datos }
   let pidiendoListas = 0, verL = 0;
+  // Y5b: listas de la cuenta de YouTube. `estado`: 'vacio' | 'cargando' | 'listo' | 'sinleer' (YouTube no las mostró) | 'error' |
+  // 'viejo' (agente anterior a 0.1.10). `releyendo`: se piden de nuevo sin quitar las que ya se ven.
+  let listasC = { estado: 'vacio', cuenta: [], t: 0, releyendo: false };
+  let pidiendoCuenta = 0;
   let visible = false, sucio = true, pantalla = '';
   let ultimoEvento = 0;    // cuándo llegó lo último del agente (estado o latido)
   const oyentes = new Set();
@@ -88,7 +96,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       let d; try { d = JSON.parse(ev.data); } catch { return; }
       listasP = { estado: 'listo', propias: Array.isArray(d.propias) ? d.propias : [], t: Date.now() }; verL++;
       ultimoEvento = Date.now();
-      if (abierta && abierta.estado === 'listo') recargarAbierta();
+      if (abierta && abierta.estado === 'listo' && abierta.origen !== 'cuenta') recargarAbierta();
       if (visible) pintarListas(); else sucio = true;
     });
     es.onerror = () => {
@@ -134,6 +142,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null; recs = { id: null, lista: [] };
     inicio = { estadoIni: 'vacio', fuente: null, secciones: [], t: 0 }; pidiendoInicio++;
     listasP = { estado: 'vacio', propias: [], t: 0 }; abierta = null; pidiendoListas++; verL++;
+    listasC = { estado: 'vacio', cuenta: [], t: 0, releyendo: false }; pidiendoCuenta++;
     if (avisarUsuario) toast('Remoto', 'Este dispositivo salió del control remoto');
     pintar(); avisar();
   }
@@ -234,7 +243,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       const b = e.target.closest('button[data-v]'); if (!b || b.dataset.v === vista) return;
       vista = b.dataset.v; store.set(K_VISTA, vista);
       pintarInicio(); pintarListas();
-      if (vista === 'inicio') pedirInicio(); else pedirListas();
+      if (vista === 'inicio') pedirInicio(); else pedirVistaListas();
     });
     pintarResultados();
     pintarInicio();
@@ -455,25 +464,53 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     }
     verL++; pintarListas();
   }
-  async function abrirLista(id) {
-    abierta = { id, estado: 'cargando', datos: null }; verL++; pintarListas();
+  function pedirVistaListas() { pedirListas(); pedirCuenta(); }
+  // Y5b: listas de la cuenta de YouTube. El agente las lee de youtube.com (puede tardar: va en fila con la búsqueda y el inicio).
+  async function pedirCuenta(forzar = false, refrescar = false) {
+    if (!ficha() || red === 'caido') return;
+    const l = listasC;
+    if (!forzar) {
+      if (l.estado === 'cargando' || l.releyendo || l.estado === 'viejo') return;
+      if (l.estado === 'listo' && Date.now() - l.t < CUENTA_VIDA) return;
+      if ((l.estado === 'error' || l.estado === 'sinleer') && Date.now() - l.t < 30000) return;
+    }
+    const mio = ++pidiendoCuenta;
+    // Con listas en pantalla se releen sin quitarlas; si no, se muestra «Cargando…».
+    listasC = l.estado === 'listo' && l.cuenta.length ? { ...l, releyendo: true } : { estado: 'cargando', cuenta: [], t: Date.now(), releyendo: false };
+    verL++; pintarListas();
+    try {
+      const r = await api('GET', `/listas/cuenta${refrescar ? '?refrescar=1' : ''}`, null, 90000);
+      if (mio !== pidiendoCuenta) return;
+      const cuenta = Array.isArray(r.cuenta) ? r.cuenta : [];
+      listasC = { estado: cuenta.length ? 'listo' : 'sinleer', cuenta, t: Date.now(), releyendo: false };
+    } catch (e) {
+      if (mio !== pidiendoCuenta) return;
+      // 404: el agente todavía no sabe de listas de la cuenta (anterior a 0.1.10).
+      listasC = { estado: e && e.codigo === 404 ? 'viejo' : 'error', cuenta: [], t: Date.now(), releyendo: false };
+    }
+    verL++; pintarListas();
+  }
+  async function abrirLista(id, origen = 'propia', refrescar = false) {
+    const ruta = origen === 'cuenta' ? `/listas/cuenta/${encodeURIComponent(id)}${refrescar ? '?refrescar=1' : ''}` : `/listas/propia/${id}`;
+    abierta = { id, origen, estado: 'cargando', datos: null }; verL++; pintarListas();
     const mio = abierta;
     try {
-      const d = await api('GET', `/listas/propia/${id}`, null, 15000);
+      const d = await api('GET', ruta, null, origen === 'cuenta' ? 120000 : 15000);
       if (abierta !== mio) return;
-      abierta = { id, estado: 'listo', datos: d };
+      abierta = { id, origen, estado: 'listo', datos: { ...d, items: Array.isArray(d.items) ? d.items : [] } };
     } catch (e) {
       if (abierta !== mio) return;
-      abierta = null; toast('Listas', e && e.codigo === 404 ? 'Esa lista ya no existe' : mensaje(e));
+      abierta = null;
+      toast('Listas', e && e.codigo === 404 ? (origen === 'cuenta' ? 'El agente de Prometeo necesita la versión 0.1.10' : 'Esa lista ya no existe') : mensaje(e));
     }
     verL++; pintarListas();
   }
   async function recargarAbierta() {
-    const id = abierta && abierta.id; if (!id) return;
+    const id = abierta && abierta.origen !== 'cuenta' && abierta.id; if (!id) return;
     try {
       const d = await api('GET', `/listas/propia/${id}`, null, 15000);
       if (!abierta || abierta.id !== id) return;
-      abierta = { id, estado: 'listo', datos: d };
+      abierta = { id, origen: 'propia', estado: 'listo', datos: d };
     } catch (e) {
       if (e && e.codigo === 404 && abierta && abierta.id === id) { abierta = null; toast('Listas', 'Esa lista ya no existe'); }
       else return;
@@ -487,6 +524,25 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       <span class="rem-art"><img src="${esc(miniDe(it))}" alt="" loading="lazy" decoding="async"></span>
       <span class="fila-txt"><b>${esc(it.titulo)}</b><small>${esc([it.autor, it.duracion ? tiempo(it.duracion) : 'En vivo'].filter(Boolean).join(' · '))}</small></span>
       <button type="button" class="fila-mas" data-quitar aria-label="Quitar de la lista">${ic('cerrar')}</button></div>`;
+  }
+  function filaCancionCuenta(it, i) {
+    return `<button type="button" class="fila rem-lcan" data-i="${i}">
+      <span class="rem-art"><img src="${esc(miniDe(it))}" alt="" loading="lazy" decoding="async"></span>
+      <span class="fila-txt"><b>${esc(it.titulo)}</b><small>${esc([it.autor, it.duracion ? tiempo(it.duracion) : ''].filter(Boolean).join(' · '))}</small></span>
+      <span class="fila-ir">${ic('mas')}</span></button>`;
+  }
+  // Y5b: grupo «De mi cuenta de YouTube» de la vista principal.
+  function grupoCuenta() {
+    const l = listasC;
+    const cab = `<header class="rem-cab rem-cab-cuenta"><b>De mi cuenta de YouTube</b>${l.estado === 'viejo' ? '' : `<button type="button" class="ic-btn${l.releyendo || l.estado === 'cargando' ? ' girando' : ''}" data-a="cuenta-actualizar" aria-label="Volver a leer las listas de YouTube">${ic('actualizar')}</button>`}</header>`;
+    const otraVez = '<div class="rem-volver-caja"><button type="button" class="boton chico" data-a="cuenta-actualizar">Intentar otra vez</button></div>';
+    let cuerpo;
+    if (l.estado === 'viejo') cuerpo = '<p class="rem-nota rem-nota-izq">Para ver las listas de tu cuenta, el agente de Prometeo necesita la versión 0.1.10.</p>';
+    else if (l.estado === 'sinleer' || l.estado === 'error') cuerpo = `<p class="rem-nota rem-nota-izq">YouTube no mostró tus listas.</p>${otraVez}`;
+    else if (l.estado !== 'listo') cuerpo = '<p class="rem-nota rem-nota-izq rem-cargando">Cargando tus listas de YouTube…</p>';
+    else cuerpo = `<div class="rem-lista">${l.cuenta.map(x => `<button type="button" class="fila rem-lrow" data-id="${esc(x.id)}" data-origen="cuenta">${miniLista(x)}
+      <span class="fila-txt"><b>${esc(x.nombre)}</b><small class="rem-yt">${IC_YT}${x.total == null ? 'YouTube' : nCanciones(x.total)}</small></span><span class="fila-ir">${ic('derecha')}</span></button>`).join('')}</div>`;
+    return `<section class="rem-grupo-cuenta">${cab}${cuerpo}</section>`;
   }
   function pintarListas() {
     const c = seccion.querySelector('.rem-listas'), f = seccion.querySelector('.rem-fichas');
@@ -509,11 +565,12 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     else if (!l.propias.length) cuerpo = '<p class="rem-nota rem-nota-izq">Todavía no tienes listas. Crea una o guarda la cola como lista.</p>';
     else cuerpo = `<div class="rem-lista">${l.propias.map(x => `<button type="button" class="fila rem-lrow" data-id="${esc(x.id)}">${miniLista(x)}
       <span class="fila-txt"><b>${esc(x.nombre)}</b><small>${nCanciones(x.total)}</small></span><span class="fila-ir">${ic('derecha')}</span></button>`).join('')}</div>`;
-    c.innerHTML = `<header class="rem-cab"><b>Mis listas</b><button type="button" class="boton chico" data-a="nueva">Nueva lista</button></header>` + cuerpo;
+    c.innerHTML = `<header class="rem-cab"><b>Mis listas</b><button type="button" class="boton chico" data-a="nueva">Nueva lista</button></header>` + cuerpo + grupoCuenta();
   }
   function pintarUnaLista(c) {
     const atras = `<header class="rem-cab rem-cab-lista"><button type="button" class="boton chico" data-a="atras">‹ Listas</button>${abierta.estado === 'listo' ? `<button type="button" class="ic-btn" data-a="menu" aria-label="Más opciones de la lista">${ic('mas')}</button>` : ''}</header>`;
-    if (abierta.estado !== 'listo') { c.innerHTML = atras + '<p class="rem-nota rem-nota-izq rem-cargando">Cargando la lista…</p>'; return; }
+    if (abierta.estado !== 'listo') { c.innerHTML = atras + `<p class="rem-nota rem-nota-izq rem-cargando">${abierta.origen === 'cuenta' ? 'Leyendo la lista en YouTube…' : 'Cargando la lista…'}</p>`; return; }
+    if (abierta.origen === 'cuenta') { pintarListaCuenta(c, atras); return; }
     const d = abierta.datos, n = d.items.length;
     c.innerHTML = atras + `<div class="rem-lhead"><b>${esc(d.nombre)}</b><span>${nCanciones(n)}</span></div>` +
       (n ? `<div class="rem-lbotones"><button type="button" class="boton principal chico" data-a="reproducir">Reproducir</button><button type="button" class="boton chico" data-a="aleatorio">Aleatorio</button><button type="button" class="boton chico" data-a="final">Al final de la cola</button></div>
@@ -525,12 +582,20 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       alQuitar: i => quitarDeLista(i)
     });
   }
+  // Y5b: lista de la cuenta de YouTube: sin reordenar ni quitar (solo se lee); ⋯ con «Copiar a mis listas» y «Actualizar».
+  function pintarListaCuenta(c, atras) {
+    const d = abierta.datos, n = d.items.length;
+    c.innerHTML = atras + `<div class="rem-lhead"><b>${esc(d.nombre)}</b><span class="rem-yt">${IC_YT}De tu cuenta de YouTube · ${nCanciones(n)}</span></div>` +
+      (n ? `<div class="rem-lbotones"><button type="button" class="boton principal chico" data-a="reproducir">Reproducir</button><button type="button" class="boton chico" data-a="aleatorio">Aleatorio</button><button type="button" class="boton chico" data-a="final">Al final de la cola</button></div>
+        <div class="rem-lista rem-lcanc">${d.items.map(filaCancionCuenta).join('')}</div>`
+        : '<p class="rem-nota rem-nota-izq">YouTube no mostró las canciones de esta lista.</p><div class="rem-volver-caja"><button type="button" class="boton chico" data-a="cuenta-releer">Intentar otra vez</button></div>');
+  }
   async function moverEnLista(desde, hasta) {
     if (!abierta || abierta.estado !== 'listo') return;
     const id = abierta.id, items = abierta.datos.items, it = items[desde]; if (!it) return;
     items.splice(desde, 1); items.splice(hasta, 0, it); verL++; pintarListas();   // se ve de inmediato; el agente lo confirma
     const r = await lorden('POST', `/listas/propia/${id}/mover`, { uid: it.uid, a: hasta });
-    if (r && abierta && abierta.id === id) { abierta = { id, estado: 'listo', datos: r }; verL++; pintarListas(); }
+    if (r && abierta && abierta.id === id) { abierta = { id, origen: 'propia', estado: 'listo', datos: r }; verL++; pintarListas(); }
     else if (!r) recargarAbierta();
   }
   async function quitarDeLista(i) {
@@ -538,7 +603,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     const id = abierta.id, it = abierta.datos.items[i]; if (!it) return;
     abierta.datos.items.splice(i, 1); verL++; pintarListas();
     const r = await lorden('POST', `/listas/propia/${id}/quitar`, { uid: it.uid });
-    if (r && abierta && abierta.id === id) { abierta = { id, estado: 'listo', datos: r }; verL++; pintarListas(); }
+    if (r && abierta && abierta.id === id) { abierta = { id, origen: 'propia', estado: 'listo', datos: r }; verL++; pintarListas(); }
     else if (!r) recargarAbierta();
   }
   async function reproducirLista(aleatorio) {
@@ -546,15 +611,16 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     const d = abierta.datos;
     // Confirmado por Wilo (23 nov 2026): con cola pendiente, la app pregunta antes de reemplazarla.
     if (pendientes().length && !await confirmar({ titulo: '¿Cambiar lo que sigue por esta lista?', texto: 'Lo que suena se corta.', boton: 'Cambiar' })) return;
-    if (await orden('POST', '/listas/reproducir', { origen: 'propia', id: d.id, modo: 'ahora', aleatorio })) toast('Prometeo', 'Suena en unos segundos');
+    if (await orden('POST', '/listas/reproducir', { origen: abierta.origen || 'propia', id: d.id, modo: 'ahora', aleatorio }, 120000)) toast('Prometeo', 'Suena en unos segundos');
   }
   async function listaAlFinal() {
     if (!abierta || abierta.estado !== 'listo') return;
     const d = abierta.datos;
-    if (await orden('POST', '/listas/reproducir', { origen: 'propia', id: d.id, modo: 'final', aleatorio: false })) toast('Cola de Prometeo', `${d.items.length === 1 ? 'Se agregó' : 'Se agregaron'} ${nCanciones(d.items.length)}`);
+    if (await orden('POST', '/listas/reproducir', { origen: abierta.origen || 'propia', id: d.id, modo: 'final', aleatorio: false }, 120000)) toast('Cola de Prometeo', `${d.items.length === 1 ? 'Se agregó' : 'Se agregaron'} ${nCanciones(d.items.length)}`);
   }
   async function menuLista() {
     if (!abierta || abierta.estado !== 'listo') return;
+    if (abierta.origen === 'cuenta') { menuListaCuenta(); return; }
     const d = abierta.datos;
     const op = await elegirOpcion({
       titulo: d.nombre,
@@ -567,16 +633,37 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       const n = await pedirTexto({ titulo: 'Nombre de la lista', valor: d.nombre, boton: 'Guardar' });
       if (!n || n === d.nombre) return;
       const r = await lorden('POST', `/listas/propia/${d.id}/renombrar`, { nombre: n });
-      if (r && abierta && abierta.id === d.id) { abierta = { id: d.id, estado: 'listo', datos: r }; verL++; pintarListas(); }
+      if (r && abierta && abierta.id === d.id) { abierta = { id: d.id, origen: 'propia', estado: 'listo', datos: r }; verL++; pintarListas(); }
     } else if (op === 'borrar' && await confirmar({ titulo: `¿Borrar “${d.nombre}”?`, texto: 'Se guarda en la papelera de Prometeo.', boton: 'Borrar', peligro: true })) {
       if (await lorden('POST', `/listas/propia/${d.id}/borrar`)) { abierta = null; verL++; pintarListas(); toast('Listas', `“${d.nombre}” fue a la papelera`); }
     }
+  }
+  async function menuListaCuenta() {
+    const d = abierta.datos, id = abierta.id;
+    const op = await elegirOpcion({
+      titulo: d.nombre,
+      opciones: [
+        { id: 'copiar', texto: 'Copiar a mis listas', sub: 'Para editarla en la radio; la de YouTube no cambia', icono: 'nuevo' },
+        { id: 'actualizar', texto: 'Actualizar', sub: 'Volver a leerla en YouTube', icono: 'actualizar' }
+      ]
+    });
+    if (op === 'copiar') copiarAMisListas();
+    else if (op === 'actualizar') abrirLista(id, 'cuenta', true);
+  }
+  // «Copiar a mis listas»: crea una lista propia con el mismo nombre y las mismas canciones (POST /listas/propia, agente 0.1.9+).
+  async function copiarAMisListas() {
+    if (!abierta || abierta.origen !== 'cuenta' || abierta.estado !== 'listo') return;
+    const d = abierta.datos;
+    if (!d.items.length) { toast('Listas', 'Esta lista no tiene canciones que copiar'); return; }
+    const nombre = String(d.nombre || 'Lista de YouTube').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Lista de YouTube';
+    const l = await lorden('POST', '/listas/propia', { nombre, items: d.items.map(soloItem) });
+    if (l) toast('Listas', 'Copiada a tus listas');
   }
   async function nuevaLista() {
     const nombre = await pedirTexto({ titulo: 'Nueva lista', marca: 'Nombre de la lista', boton: 'Crear' });
     if (!nombre) return;
     const l = await lorden('POST', '/listas/propia', { nombre });
-    if (l) { abierta = { id: l.id, estado: 'listo', datos: l }; verL++; pintarListas(); }
+    if (l) { abierta = { id: l.id, origen: 'propia', estado: 'listo', datos: l }; verL++; pintarListas(); }
   }
   function clicListas(e) {
     const a = e.target.closest('[data-a]');
@@ -589,11 +676,13 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
         case 'reproducir': reproducirLista(false); break;
         case 'aleatorio': reproducirLista(true); break;
         case 'final': listaAlFinal(); break;
+        case 'cuenta-actualizar': pedirCuenta(true, true); break;
+        case 'cuenta-releer': if (abierta) abrirLista(abierta.id, 'cuenta', true); break;
       }
       return;
     }
     const fila = e.target.closest('.rem-lrow');
-    if (fila) { abrirLista(fila.dataset.id); return; }
+    if (fila) { abrirLista(fila.dataset.id, fila.dataset.origen === 'cuenta' ? 'cuenta' : 'propia'); return; }
     const q = e.target.closest('[data-quitar]');
     if (q) { quitarDeLista(+q.closest('.fila').dataset.i); return; }
     const c = e.target.closest('.rem-lcan');
@@ -648,7 +737,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     ultimaBusqueda = ''; resultados = null;
     const q = seccion.querySelector('input[name=q]'); if (q) q.value = '';
     pintarResultados(); pintarInicio(); pintarListas();
-    if (vista === 'inicio') pedirInicio(); else pedirListas();
+    if (vista === 'inicio') pedirInicio(); else pedirVistaListas();
   }
   function pintarResultados() {
     const c = seccion.querySelector('.rem-res');
@@ -715,7 +804,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (cr && cr.dataset.k !== kr) { cr.dataset.k = kr; pintarRecs(); }
     pintarInicio();
     pintarListas();
-    if (visible) { if (vista === 'inicio') pedirInicio(); else pedirListas(); }
+    if (visible) { if (vista === 'inicio') pedirInicio(); else pedirVistaListas(); }
   }
 
   // ---------- lo que la app usa ----------

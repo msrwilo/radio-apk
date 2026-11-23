@@ -11,6 +11,7 @@ Etapa 5B del plan de la radio (vault: `WIKI/sistemas/radio-plan.md`). Reactivada
   - `index.html`: carga `vendor/capacitor.js` y `nativa.js` antes de `app.js`.
   - `ui-remoto.js` (Y3, 23 nov 2026, `app.js?v=29`): pantalla de YouTube en tres bloques (Sonando, A continuación, Recomendados); fuentes en orden YouTube, Radio Garden, SoundCloud. Pasar a la beta en Y6.
   - Y5a (23 nov 2026, `app.js?v=31`, `ui-remoto.js?v=5`, `remoto.css?v=5`): fichas Inicio | Listas, «Mis listas» (propias, en el agente 0.1.9), vista de la lista, «Agregar a una lista…» y «Guardar como lista». El selector del Inicio arranca siempre en YouTube (ya no se guarda). Pasar a la beta en Y6.
+  - Y5b (23 nov 2026, `app.js?v=32`, `ui-remoto.js?v=6`, `remoto.css?v=6`): grupo «De mi cuenta de YouTube» en Listas (agente 0.1.10), vista de la lista sin edición (Reproducir, Aleatorio, Al final de la cola; ⋯ con «Copiar a mis listas» y «Actualizar»). Con un agente anterior a 0.1.10 el grupo dice que hace falta esa versión. Pasar a la beta en Y6.
   - `vendor/three.module.min.js`: three.js r170 (mismo tamaño que el de producción, 691,648 bytes); en la copia local de `/radio` no estaba.
 - `android/`: proyecto nativo. Lo propio está en `app/src/main/java/com/lafortalezaceramica/radio/`:
   - `MusicaPlugin.java`: complemento «Musica» (elegirCarpeta, estado, listar, actualizar, detener; evento «accion»).
