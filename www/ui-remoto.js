@@ -19,6 +19,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   let resultados = null, buscando = false, ultimaBusqueda = '';
   let arrastrando = false;
   let visible = false, sucio = true, pantalla = '';
+  let ultimoEvento = 0;    // cuándo llegó lo último del agente (estado o latido)
   const oyentes = new Set();
   const avisar = () => oyentes.forEach(f => { try { f(); } catch (e) { console.warn(e); } });
 
@@ -50,14 +51,16 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   function conectar() {
     cerrarFlujo();
     if (!ficha()) return;
-    red = 'conectando'; pintarEstado();
+    red = 'conectando'; pintarEstado(); ultimoEvento = Date.now();
     es = new EventSource(`${base()}/api/eventos?ficha=${encodeURIComponent(ficha())}`);
     es.addEventListener('estado', ev => {
       try { est = JSON.parse(ev.data); } catch { return; }
-      red = 'ok';
+      red = 'ok'; ultimoEvento = Date.now();
       if (visible) pintar(); else sucio = true;
       avisar();
     });
+    // Latido del agente (0.1.6 en adelante): sirve para saber que el flujo sigue vivo aunque nada cambie.
+    es.addEventListener('latido', () => { ultimoEvento = Date.now(); });
     es.onerror = () => {
       red = 'caido'; pintarEstado(); avisar();
       // Si el navegador desistió (ficha mala, agente caído), se revisa y se reintenta.
@@ -66,9 +69,37 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   }
   async function revisar() {
     if (!ficha()) return;
-    try { est = await api('GET', '/estado', null, 8000); red = 'ok'; conectar(); if (visible) pintar(); }
-    catch (e) { red = 'caido'; pintarEstado(); clearTimeout(reintento); if (ficha()) reintento = setTimeout(revisar, 6000); }
+    try {
+      est = await api('GET', '/estado', null, 8000); red = 'ok'; ultimoEvento = Date.now();
+      conectar();   // reabre el flujo; conectar() deja 'conectando' hasta que llegue el primer estado
+      red = 'ok';   // el estado recién pedido es fresco: no hace falta esperar al flujo para mostrarlo
+      pintarEstado();
+      if (visible) pintar(); else sucio = true;
+      avisar();
+    } catch (e) { red = 'caido'; pintarEstado(); avisar(); clearTimeout(reintento); if (ficha()) reintento = setTimeout(revisar, 6000); }
   }
+  // Un teléfono o la APK en segundo plano pueden dejar el flujo congelado o muerto sin avisar (no salta onerror).
+  // Al volver a primer plano, al recuperar la red y al abrir la pestaña: lo que había deja de valer como «actual»
+  // (se atenúa y dice «Actualizando…») hasta que llegue el estado nuevo, y se reabre el flujo.
+  let revisando = 0;
+  // Con algo sonando el agente manda estado cada segundo; en pausa, un latido cada 15 s (agente 0.1.6).
+  const callado = () => Date.now() - ultimoEvento > (est && !est.pausado ? 4000 : 20000);
+  function revalidar() {
+    if (!ficha()) return;
+    if (est) { red = 'conectando'; pintarEstado(); avisar(); }
+    const mio = ++revisando;
+    revisar().finally(() => { if (mio === revisando) revisando = 0; });
+  }
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && callado()) revalidar(); });
+  window.addEventListener('pageshow', e => { if (e.persisted && callado()) revalidar(); });
+  window.addEventListener('online', revalidar);
+  window.addEventListener('focus', () => { if (callado()) revalidar(); });
+  // Vigilante: si el flujo lleva demasiado callado, se revalida. Con un agente viejo (sin latido) y en pausa
+  // esto reabre el flujo cada ~45 s, sin consecuencias.
+  setInterval(() => {
+    if (!ficha() || document.visibilityState === 'hidden' || revisando) return;
+    if (Date.now() - ultimoEvento > 45000) revalidar();
+  }, 10000);
   function salir(avisarUsuario = true) {
     cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null;
     if (avisarUsuario) toast('Remoto', 'Este dispositivo salió del control remoto');
@@ -87,6 +118,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   const dot = { ok: 'ok', conectando: 'cargando', caido: 'caido' };
   function textoEstado() {
     if (red === 'caido') return 'Prometeo no responde';
+    if (red === 'conectando' && est) return 'Actualizando…';
     if (red === 'conectando' || !est) return 'Conectando…';
     if (!est.conectado) return 'Conectando el navegador de Prometeo…';
     return 'Prometeo conectado';
@@ -96,6 +128,8 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (!b) return;
     const k = red === 'ok' && est && est.conectado ? 'ok' : (red === 'caido' ? 'caido' : 'cargando');
     b.dataset.k = k;
+    // Sin conexión confirmada, lo que se ve puede estar viejo: se atenúa.
+    seccion.classList.toggle('rem-rancio', red !== 'ok' && !!est);
     b.querySelector('b').textContent = textoEstado();
     const rb = seccion.querySelector('.rem-reintentar');
     if (rb) rb.hidden = red !== 'caido';
@@ -312,7 +346,8 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   return {
     activo,
     alCambio(f) { oyentes.add(f); return () => oyentes.delete(f); },
-    alMostrar() { visible = true; if (sucio || pantalla === '') pintar(); else { pintarAviso(); pintarEstado(); } },
+    // Al entrar a la pestaña se pide el estado y se reabre el flujo; mientras tanto se pinta lo último, atenuado.
+    alMostrar() { visible = true; if (sucio || pantalla === '') pintar(); else { pintarAviso(); pintarEstado(); } if (ficha() && callado()) revalidar(); },
     alOcultar() { visible = false; },
     refrescar() { if (visible) pintarAviso(); },
     reproduciendo: () => !!(est && est.actual && !est.pausado),

@@ -1,8 +1,8 @@
 import { buildVisualizers } from './visualizers.js?v=8';
 import { buildVisualizers2 } from './visualizers2.js?v=14';
 import { crearFuentes, crearSesionMedios } from './fuentes.js?v=3';
-import { crearRemotoUI } from './ui-remoto.js?v=1';
-import { crearPestanas } from './ui-pestanas.js?v=2';
+import { crearRemotoUI } from './ui-remoto.js?v=2';
+import { crearPestanas } from './ui-pestanas.js?v=3';
 import { crearBiblioteca } from './biblioteca.js?v=2';
 import { crearLocal } from './local.js?v=1';
 import { crearBibliotecaMaqueta } from './maqueta.js?v=1';
@@ -497,10 +497,10 @@ function paintFranja() {
 if (!UI) return;
 if (F.source === 'local' && local && local.pista) {
 const p = local.pista, d = local.duracion();
-UI.franja({ titulo: p.titulo, sub: [p.artista, p.album].filter(Boolean).join(' · ') || 'Música de este dispositivo', anterior: true, siguiente: true, progreso: d > 0 ? local.tiempo() / d : 0, imagen: local.portada.chica || null, abre: true });
+UI.franja({ titulo: p.titulo, sub: [p.artista, p.album].filter(Boolean).join(' · ') || 'Música de este dispositivo', anterior: true, siguiente: true, progreso: d > 0 ? local.tiempo() / d : 0, imagen: local.portada.chica || null });
 return;
 }
-if (usaRemoto()) { const f = RM.franja(); if (f) { UI.franja({ ...f, abre: false }); return; } }
+if (usaRemoto()) { const f = RM.franja(); if (f) { UI.franja(f); return; } }
 const dev = F.source === 'device';
 UI.franja({ titulo: dev ? 'Audio del dispositivo' : 'La Fortaleza Radio', sub: dev ? (silentShown ? 'Sin audio' : 'Visualizando') : $('statusText').textContent, anterior: false, siguiente: false, progreso: null });
 }
@@ -743,9 +743,17 @@ if (DeviceAudio.supported()) {
 $('source').addEventListener('click', () => { if (F.source !== 'radio') { F.setSource('radio'); showToast('Radio', 'La Fortaleza en vivo'); } else useDevice(); });
 } else $('source').style.display = 'none';
 let RU = null;
+// Tocar la franja «Ahora suena» lleva a la vista de lo que suena: música propia → Reproductor (ya ahí, abre la hoja);
+// YouTube desde Remoto → Remoto; radio o audio del dispositivo → Visuales. Radio Garden y SoundCloud se suman aquí.
+const irAAhoraSuena = () => {
+  if (!UI) return;
+  if (F.source === 'local' && local && local.pista) { if (UI.actual === 'reproductor') { if (RU) RU.abrirAhoraSuena(); } else UI.elegir('reproductor'); return; }
+  if (usaRemoto() && RM.franja()) { if (UI.actual !== 'remoto') UI.elegir('remoto'); return; }
+  if (UI.actual !== 'visuales') UI.elegir('visuales');
+};
 const alRadio = () => { F.setSource('radio').then(() => showToast('Radio', 'La Fortaleza en vivo')).catch(() => {}); };
 if (!WE) {
-UI = crearPestanas({ body, store, alPulsarPlay: () => togglePlay(), alPulsarPrev: () => (usaRemoto() ? RM.anterior() : local.anterior()), alPulsarNext: () => (usaRemoto() ? RM.siguiente() : local.siguiente()), alPulsarInfo: () => RU && RU.abrirAhoraSuena(), alCambiar: aplicarPestana, disponible: id => id !== 'reproductor' || biblioteca.disponible() });
+UI = crearPestanas({ body, store, alPulsarPlay: () => togglePlay(), alPulsarPrev: () => (usaRemoto() ? RM.anterior() : local.anterior()), alPulsarNext: () => (usaRemoto() ? RM.siguiente() : local.siguiente()), alPulsarInfo: irAAhoraSuena, alCambiar: aplicarPestana, disponible: id => id !== 'reproductor' || biblioteca.disponible() });
 RM = crearRemotoUI({ seccion: document.getElementById('p-remoto'), store, toast: showToast, alRadio, oyendoLocal: () => F.source === 'local' });
 RM.alCambio(() => { paintFranja(); updateMediaSession(); });
 F.onChange(() => RM.refrescar());

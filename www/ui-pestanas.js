@@ -40,8 +40,8 @@ export function crearPestanas({ body, store, alCambiar, alPulsarPlay, alPulsarPr
   let conInfo = false;
   const click = (id, f) => $(id).addEventListener('click', e => { e.stopPropagation(); if (f) f(); });
   click('frPlay', alPulsarPlay); click('frPrev', alPulsarPrev); click('frNext', alPulsarNext);
-  // Tocar la carátula o el título abre la hoja «Ahora suena» (solo con música propia).
-  for (const id of ['frArt', 'frTxt']) $(id).addEventListener('click', e => { if (conInfo && alPulsarInfo) { e.stopPropagation(); alPulsarInfo(); } });
+  // Tocar la carátula o el título lleva a la vista de lo que suena (decide app.js según la fuente).
+  for (const id of ['frArt', 'frTxt']) $(id).addEventListener('click', e => { if (alPulsarInfo) { e.stopPropagation(); alPulsarInfo(); } });
 
   function elegir(id, avisar = true) {
     if (!visibles.some(p => p.id === id)) id = 'visuales';
@@ -65,15 +65,15 @@ export function crearPestanas({ body, store, alCambiar, alPulsarPlay, alPulsarPr
   return {
     get actual() { return actual; },
     elegir,
-    // datos: { titulo, sub, anterior, siguiente, progreso (0 a 1, o null si es en vivo), imagen, abre }
+    // datos: { titulo, sub, anterior, siguiente, progreso (0 a 1, o null si es en vivo), imagen }
     franja(d) {
       $('frTitulo').textContent = d.titulo;
       $('frSub').textContent = d.sub;
       $('frPrev').hidden = !d.anterior; $('frNext').hidden = !d.siguiente;
       const img = $('frArt'), src = d.imagen || ICONO;
       if (img.getAttribute('src') !== src) img.src = src;
-      conInfo = !!d.abre;
-      franja.classList.toggle('con-info', conInfo);
+      conInfo = true;
+      franja.classList.add('con-info');
       const prog = franja.querySelector('.fr-prog');
       prog.hidden = d.progreso == null;
       if (d.progreso != null) $('frBar').style.width = Math.max(0, Math.min(1, d.progreso)) * 100 + '%';
