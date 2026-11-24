@@ -1,7 +1,7 @@
 // Pestaña Remoto: controla la música de Prometeo (agente en radio-agente) desde cualquier dispositivo.
 // Rutas y estado: WIKI/sistemas/radio-backend.md §4. Pantallas: radio-flujo.md §5 y radio-brief-diseno.md §5.
 // Y3 (23 nov 2026): tres bloques: Sonando, A continuación (cola pendiente + lo que pondría YouTube) y Recomendados.
-// Y4 (23 nov 2026): bloque Inicio (recomendaciones de YouTube o YouTube Music en cuadrícula) mientras no haya una búsqueda en pantalla.
+// Y4 (23 nov 2026): bloque Inicio (recomendaciones de YouTube en cuadrícula) mientras no haya una búsqueda en pantalla. Sin YouTube Music desde el 24 nov 2026.
 // Y5a (23 nov 2026): fichas Inicio | Listas; «Mis listas» (propias, guardadas en el agente de Prometeo), «Agregar a una lista…» y «Guardar como lista».
 // Y5b (23 nov 2026): grupo «De mi cuenta de YouTube» (agente 0.1.10): solo leer y reproducir; «Copiar a mis listas» y «Actualizar».
 import { esc, tiempo, ic, elegirOpcion, pedirTexto, confirmar, ordenable } from './ui-comun.js?v=1';
@@ -374,10 +374,9 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   }
 
   // ---------- Y4: Inicio ----------
-  // Decidido el 23 nov 2026: el selector arranca siempre en YouTube (la elección vale mientras la app está abierta).
-  let fuenteSel = 'youtube';
-  const fuenteInicio = () => fuenteSel;
-  const NOMBRE_FUENTE = { youtube: 'YouTube', music: 'YouTube Music' };
+  // 24 nov 2026 (Wilo): sin YouTube Music. El inicio sale siempre de youtube.com y ya no hay selector.
+  const fuenteInicio = () => 'youtube';
+  const NOMBRE_FUENTE = { youtube: 'YouTube' };
   // Se pide al agente (GET /inicio). Una petición a la vez; si se cambia de fuente a medias, la vieja se descarta.
   async function pedirInicio(forzar = false) {
     if (!ficha() || !est || !est.conectado) return;
@@ -415,7 +414,6 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (c.dataset.k === llave) return;
     c.dataset.k = llave;
     const cab = `<header class="rem-cab"><span></span><span class="rem-cab-acc">
-      <span class="rem-fuentes" role="group" aria-label="Origen del inicio">${['youtube', 'music'].map(k => `<button type="button" data-f="${k}" aria-pressed="${f === k}" class="${f === k ? 'on' : ''}">${NOMBRE_FUENTE[k]}</button>`).join('')}</span>
       <button type="button" class="ic-btn" data-a="actualizar" aria-label="Actualizar el inicio">${ic('actualizar')}</button></span></header>`;
     let cuerpo;
     if (!est || !est.conectado) cuerpo = '<p class="rem-nota rem-nota-izq">El inicio aparece cuando Prometeo esté conectado.</p>';
@@ -431,8 +429,6 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     c.classList.toggle('rem-actualizando', inicio.estadoIni === 'cargando' && inicio.secciones.length > 0);
   }
   function clicInicio(e) {
-    const fu = e.target.closest('[data-f]');
-    if (fu) { if (fu.dataset.f !== fuenteInicio()) { fuenteSel = fu.dataset.f; inicio = { estadoIni: 'vacio', fuente: null, secciones: [], t: 0 }; pintarInicio(); pedirInicio(true); } return; }
     if (e.target.closest('[data-a=actualizar]')) { pedirInicio(true); return; }
     const t = e.target.closest('.rem-tarj');
     if (!t) return;

@@ -1,12 +1,12 @@
 import { buildVisualizers } from './visualizers.js?v=8';
 import { buildVisualizers2 } from './visualizers2.js?v=14';
 import { crearFuentes, crearSesionMedios } from './fuentes.js?v=3';
-import { crearRemotoUI } from './ui-remoto.js?v=6';
+import { crearRemotoUI } from './ui-remoto.js?v=7';
 import { crearPestanas } from './ui-pestanas.js?v=3';
 import { crearBiblioteca } from './biblioteca.js?v=2';
 import { crearLocal } from './local.js?v=1';
 import { crearBibliotecaMaqueta } from './maqueta.js?v=1';
-const APP_VERSION = 'beta · etapa 6 (app.js v27)';
+const APP_VERSION = 'app.js v33';
 import { crearReproductorUI } from './ui-reproductor.js?v=2';
 const STREAM_URL = 'https://radio.lafortalezaceramica.com/mp3.ogg';
 const THREE_SOURCES = [
@@ -709,7 +709,10 @@ $('source').classList.toggle('on', F.source !== 'radio');
 };
 const params = new URLSearchParams(location.search);
 const maqueta = params.get('maqueta');
-const biblioteca = WE ? null : (maqueta ? crearBibliotecaMaqueta({ modo: maqueta === 'vacia' || maqueta === 'permiso' ? maqueta : '1' }) : crearBiblioteca());
+// 24 nov 2026 (Wilo): la pestaña Reproductor (música de una carpeta) es solo para la APK. En el navegador no hay
+// biblioteca ni reproductor local; con ?maqueta= sí, para probar.
+const ES_APK = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const biblioteca = WE ? null : (maqueta ? crearBibliotecaMaqueta({ modo: maqueta === 'vacia' || maqueta === 'permiso' ? maqueta : '1' }) : (ES_APK ? crearBiblioteca() : null));
 const local = biblioteca ? crearLocal({ radio, bib: biblioteca }) : null;
 const F = crearFuentes({
 defs: {
@@ -753,12 +756,12 @@ const irAAhoraSuena = () => {
 };
 const alRadio = () => { F.setSource('radio').then(() => showToast('Radio', 'La Fortaleza en vivo')).catch(() => {}); };
 if (!WE) {
-UI = crearPestanas({ body, store, alPulsarPlay: () => togglePlay(), alPulsarPrev: () => (usaRemoto() ? RM.anterior() : local.anterior()), alPulsarNext: () => (usaRemoto() ? RM.siguiente() : local.siguiente()), alPulsarInfo: irAAhoraSuena, alCambiar: aplicarPestana, disponible: id => id !== 'reproductor' || biblioteca.disponible() });
+UI = crearPestanas({ body, store, alPulsarPlay: () => togglePlay(), alPulsarPrev: () => (usaRemoto() ? RM.anterior() : local && local.anterior()), alPulsarNext: () => (usaRemoto() ? RM.siguiente() : local && local.siguiente()), alPulsarInfo: irAAhoraSuena, alCambiar: aplicarPestana, disponible: id => id !== 'reproductor' || !!(biblioteca && biblioteca.disponible()) });
 RM = crearRemotoUI({ seccion: document.getElementById('p-remoto'), store, toast: showToast, alRadio, oyendoLocal: () => F.source === 'local' });
 RM.alCambio(() => { paintFranja(); updateMediaSession(); });
 F.onChange(() => RM.refrescar());
 aplicarPestana(UI.actual);
-if (biblioteca.disponible()) {
+if (biblioteca && biblioteca.disponible()) {
 const reproducir = async (rutas, i, o) => {
 try { await F.setSource('local', { iniciar: false }); } catch (e) { showToast('No se pudo reproducir', (e && e.message) || ''); return; }
 const ok = await local.reproducirLista(rutas, i, o); if (ok) requestWake();
