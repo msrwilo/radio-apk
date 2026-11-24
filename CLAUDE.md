@@ -29,6 +29,6 @@ Etapa 5B del plan de la radio (vault: `WIKI/sistemas/radio-plan.md`). Reactivada
 - Es APK de depuración, firmada con la llave de depuración de ATLAS (`%USERPROFILE%\.android\debug.keystore`). Las actualizaciones se compilan en ATLAS; si esa llave se pierde, hay que desinstalar la app (se pierden sus datos) para instalar la nueva.
 
 ## Reglas
-- Cambios de la web: hacerlos primero en `/radio/beta/` y copiarlos aquí, o anotarlos arriba para pasarlos a la beta.
+- **Beta descartada (Wilo, 24 nov 2026):** los cambios de la web se hacen en la copia local de `/radio` (`D:\proyectos\radio`), se publican en `/radio` y se copian aquí. No se sube nada a `/radio/beta/`.
 - Nada se borra: a `papelera/`.
 - El agente de Prometeo acepta el origen `https://localhost` desde la versión 0.1.2.
