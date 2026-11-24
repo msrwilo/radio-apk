@@ -4,6 +4,8 @@
 // Y4 (23 nov 2026): bloque Inicio (recomendaciones de YouTube en cuadrícula) mientras no haya una búsqueda en pantalla. Sin YouTube Music desde el 24 nov 2026.
 // Y5a (23 nov 2026): fichas Inicio | Listas; «Mis listas» (propias, guardadas en el agente de Prometeo), «Agregar a una lista…» y «Guardar como lista».
 // Y5b (23 nov 2026): grupo «De mi cuenta de YouTube» (agente 0.1.10): solo leer y reproducir; «Copiar a mis listas» y «Actualizar».
+// Y9 (24 nov 2026): listas de reproducción en la búsqueda (agente 0.1.14), con su propia tarjeta; se abren como las de la cuenta.
+//   «Reproducir desde aquí» en la hoja de una canción de cualquier lista.
 import { esc, tiempo, ic, elegirOpcion, pedirTexto, confirmar, ordenable } from './ui-comun.js?v=1';
 
 const URL_BASE = 'https://control-radio.lafortalezaceramica.com';
@@ -42,6 +44,10 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
   // 'viejo' (agente anterior a 0.1.10). `releyendo`: se piden de nuevo sin quitar las que ya se ven.
   let listasC = { estado: 'vacio', cuenta: [], t: 0, releyendo: false };
   let pidiendoCuenta = 0;
+  // Y9: listas que YouTube puso entre los resultados ({ id, nombre, autor, total, miniatura, antesDe }) y la que se abrió
+  // desde ahí ({ id, origen: 'youtube', estado, datos, tarjeta }). La vista de la lista reemplaza los resultados.
+  let listasBus = [], abiertaBus = null;
+  let versionAgente = '';   // se pide a /salud la primera vez que hace falta («Reproducir desde aquí» necesita 0.1.14)
   let visible = false, sucio = true, pantalla = '';
   let ultimoEvento = 0;    // cuándo llegó lo último del agente (estado o latido)
   const oyentes = new Set();
@@ -139,7 +145,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (Date.now() - ultimoEvento > 45000) revalidar();
   }, 10000);
   function salir(avisarUsuario = true) {
-    cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null; recs = { id: null, lista: [] };
+    cerrarFlujo(); store.set(K_FICHA, ''); est = null; resultados = null; listasBus = []; abiertaBus = null; versionAgente = ''; recs = { id: null, lista: [] };
     inicio = { estadoIni: 'vacio', fuente: null, secciones: [], t: 0 }; pidiendoInicio++;
     listasP = { estado: 'vacio', propias: [], t: 0 }; abierta = null; pidiendoListas++; verL++;
     listasC = { estado: 'vacio', cuenta: [], t: 0, releyendo: false }; pidiendoCuenta++;
@@ -602,21 +608,32 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (r && abierta && abierta.id === id) { abierta = { id, origen: 'propia', estado: 'listo', datos: r }; verL++; pintarListas(); }
     else if (!r) recargarAbierta();
   }
-  async function reproducirLista(aleatorio) {
-    if (!abierta || abierta.estado !== 'listo') return;
-    const d = abierta.datos;
-    // Confirmado por Wilo (23 nov 2026): con cola pendiente, la app pregunta antes de reemplazarla.
-    if (pendientes().length && !await confirmar({ titulo: '¿Cambiar lo que sigue por esta lista?', texto: 'Lo que suena se corta.', boton: 'Cambiar' })) return;
-    if (await orden('POST', '/listas/reproducir', { origen: abierta.origen || 'propia', id: d.id, modo: 'ahora', aleatorio }, 120000)) toast('Prometeo', 'Suena en unos segundos');
+  // Y9: estas funciones sirven para la lista abierta en Listas (`abierta`) y para la abierta desde la búsqueda (`abiertaBus`).
+  const nombreDe = L => (L.datos && L.datos.nombre && L.datos.nombre !== 'Lista de YouTube' ? L.datos.nombre : (L.tarjeta && L.tarjeta.nombre) || (L.datos && L.datos.nombre) || 'Lista de YouTube');
+  // Confirmado por Wilo (23 nov 2026): con cola pendiente, la app pregunta antes de reemplazarla.
+  const confirmarCambio = async () => !pendientes().length || confirmar({ titulo: '¿Cambiar lo que sigue por esta lista?', texto: 'Lo que suena se corta.', boton: 'Cambiar' });
+  async function reproducirLista(aleatorio, L = abierta) {
+    if (!L || L.estado !== 'listo') return;
+    if (!await confirmarCambio()) return;
+    if (await orden('POST', '/listas/reproducir', { origen: L.origen || 'propia', id: L.datos.id, nombre: nombreDe(L), modo: 'ahora', aleatorio }, 120000)) toast('Prometeo', 'Suena en unos segundos');
   }
-  async function listaAlFinal() {
-    if (!abierta || abierta.estado !== 'listo') return;
-    const d = abierta.datos;
-    if (await orden('POST', '/listas/reproducir', { origen: abierta.origen || 'propia', id: d.id, modo: 'final', aleatorio: false }, 120000)) toast('Cola de Prometeo', `${d.items.length === 1 ? 'Se agregó' : 'Se agregaron'} ${nCanciones(d.items.length)}`);
+  async function listaAlFinal(L = abierta) {
+    if (!L || L.estado !== 'listo') return;
+    const d = L.datos;
+    if (await orden('POST', '/listas/reproducir', { origen: L.origen || 'propia', id: d.id, nombre: nombreDe(L), modo: 'final', aleatorio: false }, 120000)) toast('Cola de Prometeo', `${d.items.length === 1 ? 'Se agregó' : 'Se agregaron'} ${nCanciones(d.items.length)}`);
+  }
+  // Y9: «Reproducir desde aquí»: toca la canción `i` de la lista y deja las siguientes como lo que sigue (agente 0.1.14).
+  async function reproducirDesde(L, i) {
+    if (!L || L.estado !== 'listo') return;
+    if (!versionAgente) { try { versionAgente = (await api('GET', '/salud', null, 8000)).version || '?'; } catch (e) { toast('Remoto', mensaje(e)); return; } }
+    const v = String(versionAgente).split('.').map(Number);
+    if (!(v[0] > 0 || v[1] > 1 || (v[1] === 1 && v[2] >= 14))) { toast('Listas', 'El agente de Prometeo necesita la versión 0.1.14'); return; }
+    if (!await confirmarCambio()) return;
+    if (await orden('POST', '/listas/reproducir', { origen: L.origen || 'propia', id: L.datos.id, nombre: nombreDe(L), modo: 'ahora', desde: i }, 120000)) toast('Prometeo', 'Suena en unos segundos');
   }
   async function menuLista() {
     if (!abierta || abierta.estado !== 'listo') return;
-    if (abierta.origen === 'cuenta') { menuListaCuenta(); return; }
+    if (abierta.origen === 'cuenta') { menuListaCuenta(abierta); return; }
     const d = abierta.datos;
     const op = await elegirOpcion({
       titulo: d.nombre,
@@ -634,26 +651,26 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
       if (await lorden('POST', `/listas/propia/${d.id}/borrar`)) { abierta = null; verL++; pintarListas(); toast('Listas', `“${d.nombre}” fue a la papelera`); }
     }
   }
-  async function menuListaCuenta() {
-    const d = abierta.datos, id = abierta.id;
+  async function menuListaCuenta(L) {
+    const id = L.id;
     const op = await elegirOpcion({
-      titulo: d.nombre,
+      titulo: nombreDe(L),
       opciones: [
         { id: 'copiar', texto: 'Copiar a mis listas', sub: 'Para editarla en la radio; la de YouTube no cambia', icono: 'nuevo' },
         { id: 'actualizar', texto: 'Actualizar', sub: 'Volver a leerla en YouTube', icono: 'actualizar' }
       ]
     });
-    if (op === 'copiar') copiarAMisListas();
-    else if (op === 'actualizar') abrirLista(id, 'cuenta', true);
+    if (op === 'copiar') copiarAMisListas(L);
+    else if (op === 'actualizar') { if (L.origen === 'youtube') abrirListaBus(L.tarjeta, true); else abrirLista(id, 'cuenta', true); }
   }
   // «Copiar a mis listas»: crea una lista propia con el mismo nombre y las mismas canciones (POST /listas/propia, agente 0.1.9+).
-  async function copiarAMisListas() {
-    if (!abierta || abierta.origen !== 'cuenta' || abierta.estado !== 'listo') return;
-    const d = abierta.datos;
+  async function copiarAMisListas(L) {
+    if (!L || L.origen === 'propia' || L.estado !== 'listo') return;
+    const d = L.datos;
     if (!d.items.length) { toast('Listas', 'Esta lista no tiene canciones que copiar'); return; }
-    const nombre = String(d.nombre || 'Lista de YouTube').replace(/\s+/g, ' ').trim().slice(0, 80) || 'Lista de YouTube';
+    const nombre = String(nombreDe(L)).replace(/\s+/g, ' ').trim().slice(0, 80) || 'Lista de YouTube';
     const l = await lorden('POST', '/listas/propia', { nombre, items: d.items.map(soloItem) });
-    if (l) toast('Listas', 'Copiada a tus listas');
+    if (l) { toast('Listas', 'Copiada a tus listas'); if (listasP.estado === 'listo') pedirListas(true); }
   }
   async function nuevaLista() {
     const nombre = await pedirTexto({ titulo: 'Nueva lista', marca: 'Nombre de la lista', boton: 'Crear' });
@@ -682,7 +699,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     const q = e.target.closest('[data-quitar]');
     if (q) { quitarDeLista(+q.closest('.fila').dataset.i); return; }
     const c = e.target.closest('.rem-lcan');
-    if (c && abierta && abierta.datos) { const it = abierta.datos.items[+c.dataset.i]; if (it) ofrecer(it); }
+    if (c && abierta && abierta.datos) { const i = +c.dataset.i, it = abierta.datos.items[i]; if (it) ofrecer(it, { L: abierta, i }); }
   }
   // «Agregar a una lista…» (hoja de cualquier canción): elige una lista propia o crea una nueva con esa canción.
   async function agregarALista(x) {
@@ -720,17 +737,19 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     const q = String(texto || '').trim();
     if (!q && !buscando) { volverAlInicio(); return; }   // búsqueda vacía: de vuelta al inicio
     if (!q || buscando) return;
-    ultimaBusqueda = q; buscando = true; resultados = null; pintarResultados(); pintarInicio(); pintarListas();
+    ultimaBusqueda = q; buscando = true; resultados = null; listasBus = []; abiertaBus = null; pintarResultados(); pintarInicio(); pintarListas();
     try {
       const r = await api('GET', `/buscar?proveedor=youtube&q=${encodeURIComponent(q)}`, null, 30000);
       resultados = r.resultados || [];
+      // Y9: un agente anterior a 0.1.14 no manda `listas`; entonces solo hay videos, como antes.
+      listasBus = Array.isArray(r.listas) ? r.listas.filter(l => l && l.id && l.nombre) : [];
     } catch (e) {
-      resultados = [];
+      resultados = []; listasBus = [];
       toast('YouTube no respondió', e && e.codigo === 0 ? 'Prometeo no responde' : 'Intenta otra vez');
     } finally { buscando = false; pintarResultados(); pintarInicio(); pintarListas(); }
   }
   function volverAlInicio() {
-    ultimaBusqueda = ''; resultados = null;
+    ultimaBusqueda = ''; resultados = null; listasBus = []; abiertaBus = null;
     const q = seccion.querySelector('input[name=q]'); if (q) q.value = '';
     pintarResultados(); pintarInicio(); pintarListas();
     if (vista === 'inicio') pedirInicio(); else pedirVistaListas();
@@ -741,22 +760,87 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     if (buscando) { c.innerHTML = '<p class="rem-nota">Buscando…</p>'; return; }
     if (resultados == null) { c.innerHTML = ''; return; }
     const volver = '<button type="button" class="boton chico rem-volver" data-a="inicio">Volver</button>';
-    if (!resultados.length) { c.innerHTML = `<p class="rem-nota">No hay resultados.</p><div class="rem-volver-caja">${volver}</div>`; return; }
-    c.innerHTML = `<div class="rem-volver-caja">${volver}</div>` + resultados.map((r, i) => filaItem(r, `data-i="${i}"`)).join('');
+    if (abiertaBus) { pintarListaBus(c); return; }
+    if (!resultados.length && !listasBus.length) { c.innerHTML = `<p class="rem-nota">No hay resultados.</p><div class="rem-volver-caja">${volver}</div>`; return; }
+    // Y9: cada lista va antes del video que YouTube puso después de ella (las que sobran, al final).
+    let html = '';
+    for (let i = 0; i <= resultados.length; i++) {
+      listasBus.forEach((l, k) => { if (Math.min(Math.max(+l.antesDe || 0, 0), resultados.length) === i) html += tarjetaLista(l, k); });
+      if (i < resultados.length) html += filaItem(resultados[i], `data-i="${i}"`);
+    }
+    c.innerHTML = `<div class="rem-volver-caja">${volver}</div>` + html;
+  }
+  // Y9: tarjeta propia de una lista en los resultados: miniatura con una banda de lista y cuántas canciones, nombre, «Lista · canal».
+  function tarjetaLista(l, k) {
+    const n = Number.isFinite(+l.total) && l.total !== null ? +l.total : null;
+    return `<button type="button" class="rem-rl" data-l="${k}" aria-label="Lista: ${esc(l.nombre)}${n !== null ? `, ${nCanciones(n)}` : ''}">
+      <span class="rem-rl-mini">${l.miniatura ? `<img src="${esc(l.miniatura)}" alt="" loading="lazy" decoding="async">` : ''}<span class="rem-rl-banda">${ic('lista')}<small>${n !== null ? n : ''}</small></span></span>
+      <span class="fila-txt"><b>${esc(l.nombre)}</b><small><em class="rem-rl-tipo">Lista</em>${esc(l.autor || '')}</small></span>
+      <span class="fila-ir">${ic('derecha')}</span></button>`;
+  }
+  async function abrirListaBus(l, refrescar = false) {
+    if (!l) return;
+    abiertaBus = { id: l.id, origen: 'youtube', estado: 'cargando', datos: null, tarjeta: l }; pintarResultados();
+    const mio = abiertaBus;
+    const c = seccion.querySelector('.rem-res'); if (c && c.scrollIntoView && !refrescar) c.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    try {
+      const d = await api('GET', `/listas/youtube/${encodeURIComponent(l.id)}${refrescar ? '?refrescar=1' : ''}`, null, 120000);
+      if (abiertaBus !== mio) return;
+      abiertaBus = { ...mio, estado: 'listo', datos: { ...d, items: Array.isArray(d.items) ? d.items : [] } };
+    } catch (e) {
+      if (abiertaBus !== mio) return;
+      abiertaBus = null;
+      toast('Listas', e && e.codigo === 404 ? 'El agente de Prometeo necesita la versión 0.1.14' : mensaje(e));
+    }
+    pintarResultados();
+  }
+  // Y9: vista de una lista de la búsqueda: como una de la cuenta (solo leer), con «‹ Resultados».
+  function pintarListaBus(c) {
+    const L = abiertaBus;
+    const atras = `<header class="rem-cab rem-cab-lista"><button type="button" class="boton chico" data-a="resultados">‹ Resultados</button>${L.estado === 'listo' ? `<button type="button" class="ic-btn" data-a="lmenu" aria-label="Más opciones de la lista">${ic('mas')}</button>` : ''}</header>`;
+    if (L.estado !== 'listo') {
+      c.innerHTML = `<div class="rem-lbus">${atras}<div class="rem-lhead"><b>${esc(L.tarjeta.nombre)}</b></div><p class="rem-nota rem-nota-izq rem-cargando">Leyendo la lista en YouTube…</p></div>`;
+      return;
+    }
+    const d = L.datos, n = d.items.length;
+    const canal = d.autor || L.tarjeta.autor || '';
+    c.innerHTML = `<div class="rem-lbus">${atras}<div class="rem-lhead"><b>${esc(nombreDe(L))}</b><span class="rem-yt">${IC_YT}${esc(['Lista de YouTube', canal, nCanciones(n)].filter(Boolean).join(' · '))}</span></div>` +
+      (n ? `<div class="rem-lbotones"><button type="button" class="boton principal chico" data-a="lreproducir">Reproducir</button><button type="button" class="boton chico" data-a="laleatorio">Aleatorio</button><button type="button" class="boton chico" data-a="lfinal">Al final de la cola</button></div>
+        <div class="rem-lista rem-lcanc">${d.items.map(filaCancionCuenta).join('')}</div>`
+        : '<p class="rem-nota rem-nota-izq">YouTube no mostró las canciones de esta lista.</p><div class="rem-volver-caja"><button type="button" class="boton chico" data-a="lreleer">Intentar otra vez</button></div>') + '</div>';
   }
   function clicResultado(e) {
-    if (e.target.closest('[data-a=inicio]')) { volverAlInicio(); return; }
+    const a = e.target.closest('[data-a]');
+    if (a) {
+      switch (a.dataset.a) {
+        case 'inicio': volverAlInicio(); break;
+        case 'resultados': abiertaBus = null; pintarResultados(); break;
+        case 'lreproducir': reproducirLista(false, abiertaBus); break;
+        case 'laleatorio': reproducirLista(true, abiertaBus); break;
+        case 'lfinal': listaAlFinal(abiertaBus); break;
+        case 'lmenu': if (abiertaBus && abiertaBus.estado === 'listo') menuListaCuenta(abiertaBus); break;
+        case 'lreleer': if (abiertaBus) abrirListaBus(abiertaBus.tarjeta, true); break;
+      }
+      return;
+    }
+    const tl = e.target.closest('.rem-rl');
+    if (tl) { abrirListaBus(listasBus[+tl.dataset.l]); return; }
+    const c = e.target.closest('.rem-lcan');
+    if (c && abiertaBus && abiertaBus.datos) { const i = +c.dataset.i, it = abiertaBus.datos.items[i]; if (it) ofrecer(it, { L: abiertaBus, i }); return; }
     const b = e.target.closest('.rem-r'); if (!b || !resultados) return;
     const r = resultados[+b.dataset.i];
     if (r) ofrecer(r);
   }
   // Hoja de opciones para un video que no está en la cola. Se manda sin `automatico` ni `uid`: lo puso el usuario.
-  async function ofrecer(x) {
+  // Y9: con `ctx` ({ L, i }) la canción es la `i` de una lista abierta y la hoja ofrece «Reproducir desde aquí».
+  async function ofrecer(x, ctx = null) {
     const r = { proveedor: x.proveedor || 'youtube', id: x.id, titulo: x.titulo, autor: x.autor, duracion: x.duracion, miniatura: x.miniatura };
+    const desdeAqui = ctx && ctx.L && ctx.L.datos && ctx.i < ctx.L.datos.items.length - 1;   // en la última sería igual que «Reproducir ahora»
     const op = await elegirOpcion({
       titulo: r.titulo,
       opciones: [
         { id: 'ya', texto: 'Reproducir ahora', icono: 'play' },
+        ...(desdeAqui ? [{ id: 'desde', texto: 'Reproducir desde aquí', sub: 'Y después, lo que sigue de la lista', icono: 'cola' }] : []),
         { id: 'sig', texto: 'A continuación', icono: 'sig_lista' },
         { id: 'fin', texto: 'Al final de la cola', icono: 'cola' },
         { id: 'lista', texto: 'Agregar a una lista…', icono: 'lista' }
@@ -764,6 +848,7 @@ export function crearRemotoUI({ seccion, store, toast, alRadio, oyendoLocal = ()
     });
     if (!op) return;
     if (op === 'lista') { agregarALista(r); return; }
+    if (op === 'desde') { reproducirDesde(ctx.L, ctx.i); return; }
     if (op === 'ya') { if (await orden('POST', '/reproducir', r)) toast('Prometeo', 'Suena en unos segundos'); }
     else if (await orden('POST', '/cola/agregar', { ...r, siguiente: op === 'sig' })) toast('Cola de Prometeo', op === 'sig' ? 'Suena a continuación' : 'Agregado al final');
   }
