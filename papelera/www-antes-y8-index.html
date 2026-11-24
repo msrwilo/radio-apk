@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="robots" content="noindex, nofollow, noarchive, nosnippet">
+<meta name="googlebot" content="noindex, nofollow">
+<meta name="theme-color" content="#0d0b0a">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Radio">
+<title>La Fortaleza Radio</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preload" href="vendor/fonts/lora-latin-500-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="vendor/fonts/lato-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="modulepreload" href="vendor/three.module.min.js">
+<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="reproductor.css?v=4">
+<link rel="stylesheet" href="remoto.css?v=6">
+</head>
+<body>
+<canvas id="stage" aria-label="Visualizador de audio"></canvas>
+<div id="veil"></div>
+<div id="dim"></div>
+
+<div id="intro" role="button" aria-label="Toca para escuchar">
+  <svg class="sun" viewBox="0 0 100 100" aria-hidden="true">
+    <circle cx="50" cy="50" r="17" fill="none" stroke="currentColor" stroke-width="2.2"/>
+    <circle cx="50" cy="50" r="5" fill="currentColor"/>
+    <g stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+      <path d="M50 8v14M50 78v14M8 50h14M78 50h14M20 20l9 9M71 71l9 9M80 20l-9 9M29 71l-9 9"/>
+    </g>
+  </svg>
+  <h1>La Fortaleza <em>Radio</em></h1>
+  <p>Toca para escuchar</p>
+</div>
+
+<header id="top" class="ui">
+  <span class="brand">La Fortaleza <em>Radio</em></span>
+  <span id="status"><i class="dot"></i><span id="statusText">Listo</span></span>
+</header>
+
+<nav id="bar" class="ui" aria-label="Controles">
+  <button id="prev" aria-label="Visualizador anterior">
+    <svg viewBox="0 0 24 24"><path d="M15 5l-7 7 7 7"/></svg>
+  </button>
+  <button id="name" aria-label="Elegir visualizador">
+    <span id="vizIndex">01</span><span id="vizName">—</span>
+  </button>
+  <button id="next" aria-label="Visualizador siguiente">
+    <svg viewBox="0 0 24 24"><path d="M9 5l7 7-7 7"/></svg>
+  </button>
+  <span class="sep"></span>
+  <button id="play" aria-label="Reproducir">
+    <svg class="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z" class="fill"/></svg>
+    <svg class="i-pause" viewBox="0 0 24 24"><path d="M8 5v14M16 5v14"/></svg>
+  </button>
+  <button id="source" aria-label="Fuente de audio">
+    <svg viewBox="0 0 24 24"><path d="M4 10v4M8 7v10M12 4v16M16 7v10M20 10v4"/></svg>
+    <span class="badge" id="srcBadge">radio</span>
+  </button>
+  <button id="timer" aria-label="Cambio automático">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="13" r="7.5"/><path d="M12 9v4l2.5 2M9.5 3h5"/></svg>
+    <span class="badge" id="timerBadge">no</span>
+  </button>
+  <button id="quality" aria-label="Calidad">
+    <svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg>
+    <span class="badge" id="qualBadge">aut</span>
+  </button>
+  <button id="fs" aria-label="Pantalla completa">
+    <svg class="i-enter" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+    <svg class="i-exit" viewBox="0 0 24 24"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>
+  </button>
+</nav>
+
+<div id="sheet" class="ui-sheet" aria-hidden="true">
+  <div id="grid"></div>
+  <div class="opts">
+    <div class="opt"><span>Cambio automático</span><div class="seg" data-k="auto"><button data-v="0">No</button><button data-v="60">1 min</button><button data-v="180">3 min</button><button data-v="300">5 min</button><button data-v="900">15 min</button><button data-v="-1">Al azar</button></div></div>
+    <div class="opt"><span>Siguiente visual</span><div class="seg" data-k="random"><button data-v="0">En orden</button><button data-v="1">Aleatorio</button></div></div>
+    <div class="opt"><span>Calidad</span><div class="seg" data-k="quality"><button data-v="auto">Auto</button><button data-v="alta">Alta</button><button data-v="media">Media</button><button data-v="baja">Baja</button><button data-v="ahorro">Ahorro</button></div></div>
+  </div>
+</div>
+
+<div id="toast"></div>
+<noscript><p class="nojs">Esta página necesita JavaScript.</p></noscript>
+<script src="vendor/capacitor.js"></script>
+<script src="nativa.js"></script>
+<script type="module" src="app.js?v=33"></script>
+</body>
+</html>

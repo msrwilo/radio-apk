@@ -107,3 +107,18 @@ body.auto #timer svg{color:var(--accent)}
 body.auto #vizIndex::after{content:none}
 .seg{flex-wrap:wrap}
 @media (max-width:470px){#vizName{display:none}#name{min-width:44px !important;padding:0 8px}#bar{gap:1px;padding:5px}#bar button{min-width:42px;height:46px}.sep{margin:0 2px}}
+
+/* Barra de desplazamiento (guía de La Fortaleza §16, 24 nov 2026): 10 px con 3 px de aire, redonda, color del texto
+   al 24 % (45 % al pasar el cursor), sin riel. En teléfono se queda la del sistema. Las filas que se deslizan de lado
+   siguen sin barra (scrollbar-width:none en su propia regla). */
+@media (hover:hover) and (pointer:fine){
+::-webkit-scrollbar{width:10px;height:10px;background:transparent}
+::-webkit-scrollbar-track,::-webkit-scrollbar-corner{background:transparent}
+::-webkit-scrollbar-button{display:none}
+::-webkit-scrollbar-thumb{background:rgba(227,212,189,.24);border:3px solid transparent;border-radius:999px;background-clip:padding-box}
+::-webkit-scrollbar-thumb:hover{background-color:rgba(227,212,189,.45)}
+@supports (-moz-appearance:none){*{scrollbar-width:thin;scrollbar-color:rgba(227,212,189,.24) transparent}}
+}
+/* Logo de La Fortaleza junto al nombre (24 nov 2026): en oscuro va claro, como pide la guía. */
+.brand{display:inline-flex;align-items:center;gap:9px}
+.brand .logo{height:24px;width:auto;flex:none;color:var(--ink);filter:drop-shadow(0 1px 8px rgba(0,0,0,.6))}

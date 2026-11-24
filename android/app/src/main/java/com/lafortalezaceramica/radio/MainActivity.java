@@ -10,6 +10,8 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MusicaPlugin.class);
         super.onCreate(savedInstanceState);
         bridge.setWebViewClient(new MusicaWebViewClient(bridge));
+        // 24 nov 2026 (Wilo): la app arranca directo y la radio suena sin esperar un toque.
+        bridge.getWebView().getSettings().setMediaPlaybackRequiresUserGesture(false);
     }
 
     @Override

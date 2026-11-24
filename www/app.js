@@ -6,7 +6,7 @@ import { crearPestanas } from './ui-pestanas.js?v=3';
 import { crearBiblioteca } from './biblioteca.js?v=2';
 import { crearLocal } from './local.js?v=1';
 import { crearBibliotecaMaqueta } from './maqueta.js?v=1';
-const APP_VERSION = 'app.js v33';
+const APP_VERSION = 'app.js v34';
 import { crearReproductorUI } from './ui-reproductor.js?v=2';
 const STREAM_URL = 'https://radio.lafortalezaceramica.com/mp3.ogg';
 const THREE_SOURCES = [
@@ -25,6 +25,7 @@ set(k, v) { try { localStorage.setItem(k, v); } catch { /* sin almacenamiento */
 };
 function fatal(msg) {
 const p = $('intro').querySelector('p'); if (p) p.textContent = msg;
+$('intro').classList.remove('hide');
 body.classList.add('fatal');
 }
 async function loadThree() {
@@ -453,7 +454,7 @@ wave(a) { let s = 0; for (let i = 0; i < 64; i++) s += this.v[i]; const amp = Ma
 }
 const STATUS_TXT = {
 ready: 'Listo', connecting: 'Conectando…', buffer: 'Cargando…', live: 'En vivo',
-retry: 'Sin señal · reintentando', paused: 'En pausa', blocked: 'Toca play'
+retry: 'Sin señal · reintentando', paused: 'En pausa', blocked: 'Toca para escuchar'
 };
 async function main() {
 let THREE;
@@ -660,7 +661,8 @@ t.innerHTML = sub ? `${txt}<small>${sub}</small>` : txt;
 t.classList.add('show');
 clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), 1700);
 }
-body.classList.add(WE ? 'we' : 'intro');
+// 24 nov 2026 (Wilo): sin portada «Toca para escuchar»; la app arranca sola (ver arrancar() al final).
+if (WE) body.classList.add('we');
 if (WE && window.__weOpts && window.__weGot) window.__weApply(window.__weOpts);
 const intro = $('intro');
 function start() {
@@ -669,6 +671,18 @@ body.classList.add('menu');
 if (local && store.get('radio.fuente') === 'local' && local.hayCola) {
 F.setSource('local', { iniciar: false }).then(() => local.reanudar()).then(ok => { if (ok) requestWake(); else F.setSource('radio').catch(() => {}); }).catch(() => { radio.play(); requestWake(); });
 } else { radio.play(); requestWake(); }
+}
+// Si el navegador no deja sonar sin un toque (política de reproducción automática), la radio empieza con el primer
+// toque o tecla en cualquier parte. Se espera a que el propio botón actúe: si ya la puso o la pausó, no se toca.
+function armarPrimerToque() {
+const quitar = () => { document.removeEventListener('click', alTocar, true); document.removeEventListener('keydown', alTocar, true); };
+const alTocar = () => { setTimeout(() => {
+if (F.source !== 'radio') { quitar(); return; }
+if (radio.state === 'blocked' && !radio.wanted) { radio.play(); requestWake(); }
+if (radio.state !== 'blocked') quitar();
+}, 0); };
+document.addEventListener('click', alTocar, true);
+document.addEventListener('keydown', alTocar, true);
 }
 let dragDist = 0, lastPX = 0, lastPY = 0, pointerId = null;
 const isUI = el => el && el.closest && el.closest('.ui, .ui-sheet, #intro');
@@ -755,6 +769,7 @@ const irAAhoraSuena = () => {
   if (UI.actual !== 'visuales') UI.elegir('visuales');
 };
 const alRadio = () => { F.setSource('radio').then(() => showToast('Radio', 'La Fortaleza en vivo')).catch(() => {}); };
+let listoLocal = Promise.resolve();
 if (!WE) {
 UI = crearPestanas({ body, store, alPulsarPlay: () => togglePlay(), alPulsarPrev: () => (usaRemoto() ? RM.anterior() : local && local.anterior()), alPulsarNext: () => (usaRemoto() ? RM.siguiente() : local && local.siguiente()), alPulsarInfo: irAAhoraSuena, alCambiar: aplicarPestana, disponible: id => id !== 'reproductor' || !!(biblioteca && biblioteca.disponible()) });
 RM = crearRemotoUI({ seccion: document.getElementById('p-remoto'), store, toast: showToast, alRadio, oyendoLocal: () => F.source === 'local' });
@@ -786,7 +801,7 @@ if (F.source !== 'local') return;
 paintPlaying(); paintFranja(); updateMediaSession();
 if (!local.sonando && !local.hayCola) releaseWake();
 });
-biblioteca.iniciar().then(() => local.restaurar()).then(() => { paintFranja(); }).catch(e => console.warn('Biblioteca', e));
+listoLocal = biblioteca.iniciar().then(() => local.restaurar()).then(() => { paintFranja(); }).catch(e => console.warn('Biblioteca', e));
 }
 }
 const togglePlay = () => {
@@ -858,6 +873,8 @@ window.addEventListener('orientationchange', () => setTimeout(applySize, 200));
 setViz(index, false);
 $('statusText').textContent = STATUS_TXT.ready;
 paintFranja();
+// Arranque directo: en la APK se espera (máximo 1.5 s) a que se restaure la música local, para reanudarla si era lo último.
+if (!WE) Promise.race([listoLocal, new Promise(r => setTimeout(r, 1500))]).then(() => { start(); armarPrimerToque(); });
 if (!WE && 'serviceWorker' in navigator && !(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())) {
 const regSw = () => navigator.serviceWorker.register('sw.js').catch(e => console.warn('Sin trabajo sin conexión', e));
 if (document.readyState === 'complete') regSw(); else window.addEventListener('load', regSw);

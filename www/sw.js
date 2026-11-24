@@ -1,8 +1,8 @@
 // Guarda la app para que abra sin internet. La radio y el remoto sí necesitan conexión.
 // Red primero: si hay internet siempre se ve la versión nueva; si no, la última guardada.
-const CACHE = 'radio-fortaleza-v3';
+const CACHE = 'radio-fortaleza-v4';
 const LISTA = [
-  './', 'index.html', 'style.css?v=5', 'reproductor.css?v=4', 'remoto.css?v=6', 'app.js?v=33', 'fuentes.js?v=3', 'ui-remoto.js?v=7', 'ui-pestanas.js?v=3',
+  './', 'index.html', 'style.css?v=6', 'reproductor.css?v=4', 'remoto.css?v=6', 'app.js?v=34', 'fuentes.js?v=3', 'ui-remoto.js?v=7', 'ui-pestanas.js?v=3',
   'id3.js?v=1', 'biblioteca.js?v=2', 'ui-reproductor.js?v=2', 'local.js?v=1', 'ui-comun.js?v=1', 'ui-ahora.js?v=1', 'maqueta.js?v=1',
   'visualizers.js?v=8', 'visualizers2.js?v=14', 'vendor/three.module.min.js', 'manifest.webmanifest', 'nativa.js', 'vendor/capacitor.js',
   'icon.svg', 'icon-192.png', 'icon-512.png',
